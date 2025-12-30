@@ -149,12 +149,29 @@ const App: React.FC = () => {
     if (SpeechRecognition) {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false; // Fix: Only process final results to prevent duplication
+      recognitionRef.current.maxAlternatives = 1;
       recognitionRef.current.lang = 'de-DE';
-      recognitionRef.current.onstart = () => setIsListening(true);
-      recognitionRef.current.onend = () => setIsListening(false);
+      
+      recognitionRef.current.onstart = () => {
+        setIsListening(true);
+        handleStopPlayback(); // Stop any reading when mic starts
+      };
+      
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+      
       recognitionRef.current.onresult = (e: any) => {
         const transcript = e.results[0][0].transcript;
-        setUserInput(prev => (prev.trim() ? prev.trim() + ' ' : '') + transcript);
+        if (transcript) {
+          setUserInput(prev => (prev.trim() ? prev.trim() + ' ' : '') + transcript);
+        }
+      };
+
+      recognitionRef.current.onerror = (e: any) => {
+        console.error("Speech Recognition Error:", e.error);
+        setIsListening(false);
       };
     }
 
@@ -282,6 +299,9 @@ const App: React.FC = () => {
   };
 
   const playAudio = async (audioBase64: string, label: string) => {
+    // Stop any active microphone before speaking to prevent feedback loops
+    if (isListening) recognitionRef.current?.stop();
+    
     handleStopPlayback();
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
     playbackCtxRef.current = ctx;
@@ -366,6 +386,14 @@ const App: React.FC = () => {
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: cleanText, timestamp: new Date() }]);
     } catch (err) { console.error("Chat message failed", err); }
     finally { setIsLoading(false); }
+  };
+
+  const toggleMic = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+    } else {
+      recognitionRef.current?.start();
+    }
   };
 
   const openTasksCount = tasks.filter(t => !t.completed).length;
@@ -552,7 +580,7 @@ const App: React.FC = () => {
 
           <div className="p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t dark:border-slate-800 absolute bottom-0 inset-x-0 pb-6 md:pb-4">
             <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-full border border-transparent focus-within:border-indigo-500/30 transition-all shadow-inner">
-              <button type="button" onClick={() => recognitionRef.current?.start()} className={`p-2.5 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:text-indigo-500'}`}><Mic className="w-5 h-5" /></button>
+              <button type="button" onClick={toggleMic} className={`p-2.5 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-500/20' : 'text-slate-400 hover:text-indigo-500'}`} title={isListening ? "Stoppen" : "Sprechen"}><Mic className="w-5 h-5" /></button>
               <input value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Frag NoteHub..." className="flex-1 bg-transparent border-none outline-none text-sm px-2 py-2" />
               <button type="submit" disabled={isLoading} className="p-2.5 bg-indigo-500 text-white rounded-full disabled:opacity-50 hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/20">{isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}</button>
             </form>

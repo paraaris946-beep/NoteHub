@@ -19,7 +19,9 @@ import {
   MoreHorizontal,
   RefreshCw,
   Zap,
-  ChevronRight
+  ChevronRight,
+  Edit2,
+  Check
 } from 'lucide-react';
 
 interface TaskItemProps {
@@ -35,13 +37,14 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [showPriorityMenu, setShowPriorityMenu] = useState(false);
-  const [showReminderPicker, setShowReminderPicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedTitle, setEditedTitle] = useState(task.title);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const priorityMenuRef = useRef<HTMLDivElement>(null);
+  const editInputRef = useRef<HTMLInputElement>(null);
 
   const priorityConfig = {
     high: { 
@@ -66,7 +69,13 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
 
   const currentPriority = priorityConfig[task.priority];
 
-  // Close priority menu when clicking outside
+  useEffect(() => {
+    if (isEditing && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [isEditing]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (priorityMenuRef.current && !priorityMenuRef.current.contains(event.target as Node)) {
@@ -79,7 +88,6 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showPriorityMenu]);
 
-  // Camera Logic
   useEffect(() => {
     let stream: MediaStream | null = null;
     if (isCameraOpen) {
@@ -130,6 +138,23 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
     }
   };
 
+  const handleSaveEdit = () => {
+    if (editedTitle.trim() && onUpdate) {
+      onUpdate(task.id, { title: editedTitle.trim() });
+    } else {
+      setEditedTitle(task.title);
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') handleSaveEdit();
+    if (e.key === 'Escape') {
+      setEditedTitle(task.title);
+      setIsEditing(false);
+    }
+  };
+
   return (
     <>
       <div className={`
@@ -147,19 +172,17 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
             </button>
             
             <div className="flex flex-col flex-1 min-w-0">
-              <div className="flex items-center gap-2 relative">
-                {/* Prioritäts-Indikator mit Dropdown-Trigger */}
+              <div className="flex items-center gap-2 relative group">
+                {/* Prioritäts-Indikator */}
                 <div className="relative" ref={priorityMenuRef}>
                   <button 
                     onClick={() => !task.completed && setShowPriorityMenu(!showPriorityMenu)} 
                     disabled={task.completed} 
                     className={`w-6 h-6 flex items-center justify-center rounded-lg border text-[10px] font-black transition-all shrink-0 ${currentPriority.color} ${!task.completed ? 'hover:scale-110 active:scale-95 shadow-sm' : 'opacity-30'}`}
-                    title="Priorität ändern"
                   >
                     {currentPriority.symbol}
                   </button>
 
-                  {/* Kleines Auswahlmenü (Dropdown) */}
                   {showPriorityMenu && (
                     <div className="absolute top-full left-0 mt-2 z-[50] min-w-[120px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200">
                       {(Object.values(priorityConfig)).map((p) => (
@@ -178,10 +201,34 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
                   )}
                 </div>
 
-                <span className={`font-bold text-sm truncate transition-all ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>
-                  {task.title}
-                </span>
-                {task.isImportant && !task.completed && <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 animate-pulse shrink-0" />}
+                {isEditing ? (
+                  <div className="flex-1 flex items-center gap-1 min-w-0">
+                    <input
+                      ref={editInputRef}
+                      type="text"
+                      value={editedTitle}
+                      onChange={(e) => setEditedTitle(e.target.value)}
+                      onBlur={handleSaveEdit}
+                      onKeyDown={handleKeyDown}
+                      className="flex-1 bg-slate-50 dark:bg-slate-800 border-none outline-none rounded-lg px-2 py-1 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500/20"
+                    />
+                    <button onClick={handleSaveEdit} className="p-1 text-green-500"><Check className="w-4 h-4" /></button>
+                    <button onClick={() => { setEditedTitle(task.title); setIsEditing(false); }} className="p-1 text-red-500"><X className="w-4 h-4" /></button>
+                  </div>
+                ) : (
+                  <>
+                    <span 
+                      onClick={() => !task.completed && setIsEditing(true)}
+                      className={`font-bold text-sm truncate transition-all cursor-text flex-1 ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200 hover:text-indigo-500'}`}
+                    >
+                      {task.title}
+                    </span>
+                    {!task.completed && (
+                      <Edit2 onClick={() => setIsEditing(true)} className="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer shrink-0" />
+                    )}
+                  </>
+                )}
+                {task.isImportant && !task.completed && !isEditing && <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 animate-pulse shrink-0" />}
               </div>
               
               <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -228,7 +275,6 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
           </div>
         </div>
 
-        {/* Camera Searcher - Integrated UI */}
         {isCameraOpen && (
           <div className="mt-4 animate-in slide-in-from-top-4 duration-300">
             <div className="relative aspect-video bg-slate-900 rounded-[1.8rem] overflow-hidden border-2 border-indigo-500/30 shadow-inner">
@@ -255,7 +301,6 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
         <canvas ref={canvasRef} className="hidden" />
       </div>
 
-      {/* Preview Modal (Lightbox) */}
       {isPreviewOpen && (
         <div className="fixed inset-0 z-[250] bg-slate-950/95 backdrop-blur-xl flex flex-col items-center justify-center p-6 animate-in fade-in duration-300">
           <button onClick={() => setIsPreviewOpen(false)} className="absolute top-6 right-6 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors">
@@ -278,7 +323,6 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
         </div>
       )}
 
-      {/* Delete Confirm */}
       {isConfirming && (
         <div className="fixed inset-0 z-[260] flex items-center justify-center p-6 animate-in fade-in duration-200">
           <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setIsConfirming(false)} />

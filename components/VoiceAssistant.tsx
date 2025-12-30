@@ -65,7 +65,16 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
     setError(null);
     try {
       const ai = getGeminiClient();
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Optimization: Add explicit constraints for better audio quality and reduced sensitivity
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 16000
+        } 
+      });
       streamRef.current = stream;
 
       const inCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
@@ -110,13 +119,17 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
                 data: encodeBase64(new Uint8Array(int16.buffer)), 
                 mimeType: 'audio/pcm;rate=16000' 
               };
-              sessionPromise.then(s => s.sendRealtimeInput({ media: pcmBlob }));
+              sessionPromise.then(s => {
+                if (s) s.sendRealtimeInput({ media: pcmBlob });
+              });
             };
             source.connect(scriptProcessor);
             scriptProcessor.connect(inCtx.destination);
           },
           onmessage: async (msg) => {
-            if (msg.serverContent?.inputTranscription) setTranscription(msg.serverContent.inputTranscription.text);
+            if (msg.serverContent?.inputTranscription) {
+              setTranscription(msg.serverContent.inputTranscription.text);
+            }
             if (msg.serverContent?.interrupted) {
               for (const s of sourcesRef.current) try { s.stop(); } catch(e) {}
               sourcesRef.current.clear();
