@@ -36,7 +36,9 @@ import {
   ExternalLink,
   User,
   Calendar,
-  IdCard
+  IdCard,
+  Zap,
+  Brain
 } from 'lucide-react';
 
 const INITIAL_MESSAGE: Message = { 
@@ -52,6 +54,62 @@ const VOICES = [
   { id: 'Zephyr', name: 'Zephyr', label: 'Ruhig (Neutral)' },
   { id: 'Charon', name: 'Charon', label: 'Tief (Männlich)' },
 ];
+
+// Sub-component for Neural Thought Visualization
+const ThoughtVisualizer: React.FC<{ active: boolean; profile: UserProfile; tasksCount: number }> = ({ active, profile, tasksCount }) => {
+  if (!active) return null;
+  
+  return (
+    <div className="absolute bottom-full left-0 right-0 mb-4 px-6 animate-in fade-in slide-in-from-bottom-4 duration-500 z-30">
+      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-indigo-500/20 rounded-[2rem] p-6 shadow-2xl shadow-indigo-500/10 overflow-hidden relative">
+        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent animate-pulse" />
+        
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Brain className="w-5 h-5 text-indigo-500 animate-pulse" />
+              <div className="absolute -inset-1 bg-indigo-500/20 blur-md rounded-full animate-ping" />
+            </div>
+            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">NoteHub Denkprozess</span>
+          </div>
+          <div className="flex gap-1">
+            {[1, 2, 3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.1}s` }} />)}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          <div className={`flex items-center gap-2 p-3 rounded-2xl border transition-all duration-700 ${profile.name ? 'border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/20 scale-105 shadow-sm' : 'border-slate-100 dark:border-slate-800 opacity-40'}`}>
+            <User className={`w-3.5 h-3.5 ${profile.name ? 'text-indigo-500' : 'text-slate-300'}`} />
+            <div className="flex flex-col">
+              <span className="text-[9px] font-bold text-slate-400 uppercase">Gedächtnis</span>
+              <span className="text-[11px] font-bold truncate dark:text-slate-200">{profile.name || "Identität..."}</span>
+            </div>
+          </div>
+          <div className={`flex items-center gap-2 p-3 rounded-2xl border transition-all duration-700 ${tasksCount > 0 ? 'border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/20 scale-105 shadow-sm' : 'border-slate-100 dark:border-slate-800 opacity-40'}`}>
+            <LayoutDashboard className={`w-3.5 h-3.5 ${tasksCount > 0 ? 'text-indigo-500' : 'text-slate-300'}`} />
+            <div className="flex flex-col">
+              <span className="text-[9px] font-bold text-slate-400 uppercase">Struktur</span>
+              <span className="text-[11px] font-bold truncate dark:text-slate-200">{tasksCount} Aufgaben</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 p-3 rounded-2xl border border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/20 scale-105 shadow-sm transition-all duration-700 col-span-2 sm:col-span-1">
+            <Clock className="w-3.5 h-3.5 text-indigo-500" />
+            <div className="flex flex-col">
+              <span className="text-[9px] font-bold text-slate-400 uppercase">Zeitbezug</span>
+              <span className="text-[11px] font-bold truncate dark:text-slate-200">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} Uhr</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t dark:border-slate-800/50 flex flex-wrap gap-2">
+           <span className="text-[9px] font-black px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 uppercase animate-pulse">Analysiere Kontext...</span>
+           <span className="text-[9px] font-black px-2 py-1 rounded-lg bg-indigo-500 text-white uppercase animate-bounce" style={{ animationDelay: '0.2s' }}>Priorisiere...</span>
+           <span className="text-[9px] font-black px-2 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 uppercase animate-pulse" style={{ animationDelay: '0.4s' }}>Verknüpfe Daten...</span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const App: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -182,15 +240,12 @@ const App: React.FC = () => {
 
   const handleExportTasks = () => {
     if (tasks.length === 0) return;
-    
     const dateStr = new Date().toLocaleDateString('de-DE');
     let content = `# Mein Tagesplan - ${dateStr} (Exportiert von NoteHub)\n\n`;
-    
     if (dayPlan) {
       content += `**Fokus:** ${dayPlan.focus}\n`;
       content += `**Motivation:** ${dayPlan.motivation}\n\n`;
     }
-    
     content += `## Aufgaben\n`;
     tasks.forEach(task => {
       const status = task.completed ? '[x]' : '[ ]';
@@ -198,9 +253,7 @@ const App: React.FC = () => {
       const time = task.time ? ` (${task.time})` : '';
       content += `${status} ${task.title}${time}${importance} [Prio: ${task.priority}]\n`;
     });
-    
     content += `\n---\nExportiert von NoteHub`;
-
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -232,9 +285,7 @@ const App: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onload = () => {
-        setSelectedImage(reader.result as string);
-      };
+      reader.onload = () => setSelectedImage(reader.result as string);
       reader.readAsDataURL(file);
     }
   };
@@ -258,11 +309,17 @@ const App: React.FC = () => {
     setIsLoading(true);
 
     try {
-      let responseText = "";
       const dateContext = `(Heute ist ${new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}, ${new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})`;
       const profileContext = userProfile.name ? `(Der Nutzer heißt ${userProfile.name})` : '';
       
+      let responseText = "";
+      const modelId = Date.now().toString();
+      
+      // Temporary message for streaming
+      setMessages(prev => [...prev, { id: modelId, role: 'model', text: "", timestamp: new Date() }]);
+
       if (currentImage) {
+        // No streaming for image analysis for simpler implementation here
         const ai = getGeminiClient();
         const base64Data = currentImage.split(',')[1];
         const result = await ai.models.generateContent({
@@ -273,12 +330,19 @@ const App: React.FC = () => {
               { text: `${dateContext} ${profileContext} ${currentInput || "Analysiere das Bild."} Antworte im NoteHub-Stil mit [PLAN_JSON] falls Aufgaben dabei sind.` }
             ]
           }],
-          config: { systemInstruction: "Du bist NoteHub. Extrahiere Aufgaben präzise mit Fokus auf korrekten Datums- und Zeitangaben." }
+          config: { 
+            systemInstruction: "Du bist NoteHub. Extrahiere Aufgaben präzise.",
+            thinkingConfig: { thinkingBudget: 1000 }
+          }
         });
         responseText = result.text || "";
+        updateStreamingMessage(modelId, responseText);
       } else {
-        const result = await chatRef.current.sendMessage({ message: `${dateContext} ${profileContext} ${currentInput}` });
-        responseText = result.text;
+        const stream = await chatRef.current.sendMessageStream({ message: `${dateContext} ${profileContext} ${currentInput}` });
+        for await (const chunk of stream) {
+          responseText += chunk.text;
+          updateStreamingMessage(modelId, responseText);
+        }
       }
 
       // Robust JSON Extraction
@@ -287,7 +351,8 @@ const App: React.FC = () => {
         const potentialJson = parts[1]?.trim() || "";
         const startIndex = potentialJson.indexOf('{');
         const endIndex = potentialJson.lastIndexOf('}');
-        responseText = parts[0].trim();
+        const cleanText = parts[0].trim();
+        updateStreamingMessage(modelId, cleanText);
         
         if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
           try {
@@ -301,11 +366,13 @@ const App: React.FC = () => {
           } catch (e) { console.error("JSON Parse Error:", e); }
         }
       }
-
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: responseText, timestamp: new Date() }]);
     } catch (err) {
       setMessages(prev => [...prev, { id: 'err', role: 'model', text: 'Ups, da hat was nicht geklappt.', timestamp: new Date() }]);
     } finally { setIsLoading(false); }
+  };
+
+  const updateStreamingMessage = (id: string, text: string) => {
+    setMessages(prev => prev.map(m => m.id === id ? { ...m, text } : m));
   };
 
   const handlePlayBriefing = async () => {
@@ -413,7 +480,6 @@ const App: React.FC = () => {
                   </div>
                </div>
 
-               {/* Profile Section */}
                <div className="space-y-4">
                  <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Profil (Zukünftige Features)</h3>
                  <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 p-5 space-y-5">
@@ -421,24 +487,13 @@ const App: React.FC = () => {
                        <label className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">
                          <IdCard className="w-3.5 h-3.5" /> Name
                        </label>
-                       <input 
-                         type="text" 
-                         value={userProfile.name}
-                         onChange={(e) => setUserProfile(prev => ({ ...prev, name: e.target.value }))}
-                         placeholder="Dein Name"
-                         className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500/20 rounded-xl text-sm outline-none transition-all dark:text-slate-200"
-                       />
+                       <input type="text" value={userProfile.name} onChange={(e) => setUserProfile(prev => ({ ...prev, name: e.target.value }))} placeholder="Dein Name" className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500/20 rounded-xl text-sm outline-none transition-all dark:text-slate-200" />
                     </div>
                     <div className="space-y-2">
                        <label className="flex items-center gap-2 text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider ml-1">
                          <Calendar className="w-3.5 h-3.5" /> Geburtsdatum
                        </label>
-                       <input 
-                         type="date" 
-                         value={userProfile.birthDate}
-                         onChange={(e) => setUserProfile(prev => ({ ...prev, birthDate: e.target.value }))}
-                         className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500/20 rounded-xl text-sm outline-none transition-all dark:text-slate-200"
-                       />
+                       <input type="date" value={userProfile.birthDate} onChange={(e) => setUserProfile(prev => ({ ...prev, birthDate: e.target.value }))} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500/20 rounded-xl text-sm outline-none transition-all dark:text-slate-200" />
                     </div>
                  </div>
                </div>
@@ -468,20 +523,6 @@ const App: React.FC = () => {
                      <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${isDarkMode ? 'translate-x-6' : ''}`} />
                    </button>
                  </div>
-
-                 <div className="bg-white dark:bg-slate-800 rounded-2xl border dark:border-slate-700 p-4 space-y-4">
-                    <div className="flex items-start gap-3 mb-2">
-                       <MessageSquare className="w-5 h-5 text-indigo-500 shrink-0 mt-1" />
-                       <div>
-                         <h3 className="text-sm font-bold dark:text-slate-100">Dein Feedback</h3>
-                         <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Hilf uns, NoteHub noch besser zu machen!</p>
-                       </div>
-                    </div>
-                    <button onClick={() => window.open('https://forms.gle/feedback-minicoach', '_blank')} className="w-full flex items-center justify-center gap-2 bg-indigo-600 dark:bg-indigo-500 hover:brightness-95 text-white py-3.5 rounded-xl font-bold text-sm transition-all group shadow-md">
-                      Feedback geben
-                      <ExternalLink className="w-4 h-4 opacity-70 group-hover:translate-x-0.5 group-hover:-translate-y-0.5 transition-transform" />
-                    </button>
-                 </div>
                </div>
             </div>
             <div className="px-8 py-6 bg-slate-50 dark:bg-slate-800/50 border-t dark:border-slate-800">
@@ -499,21 +540,17 @@ const App: React.FC = () => {
                 <div className="flex flex-col gap-1 max-w-[85%]">
                   <div className={`p-4 rounded-[2rem] shadow-sm text-sm leading-relaxed ${msg.role === 'user' ? 'bg-slate-800 dark:bg-indigo-600 text-white rounded-tr-none shadow-indigo-100 dark:shadow-none' : 'bg-white dark:bg-slate-900 border dark:border-slate-800 text-slate-700 dark:text-slate-200 rounded-tl-none shadow-slate-100 dark:shadow-none'}`}>
                     {msg.image && <img src={msg.image} className="max-w-full rounded-2xl mb-3 border dark:border-slate-700" alt="Anhang" />}
-                    {msg.text}
+                    {msg.text || (isLoading && msg.id === messages[messages.length-1].id ? <div className="flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin text-indigo-400" /> <span className="text-xs opacity-50 italic">Denke nach...</span></div> : '')}
                   </div>
                   <span className="text-[9px] text-slate-300 font-bold px-2 uppercase tracking-tighter">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
               </div>
             ))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-white dark:bg-slate-900 border dark:border-slate-800 p-4 rounded-3xl flex items-center gap-3"><Loader2 className="w-4 h-4 animate-spin text-indigo-400" /> <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Verarbeite...</span></div>
-              </div>
-            )}
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="p-6 bg-white dark:bg-slate-900/50 border-t dark:border-slate-800">
+          <div className="p-6 bg-white dark:bg-slate-900/50 border-t dark:border-slate-800 relative">
+            <ThoughtVisualizer active={isLoading} profile={userProfile} tasksCount={tasks.length} />
             <div className="max-w-3xl mx-auto flex flex-col gap-3">
               {selectedImage && (
                 <div className="relative self-start">
@@ -560,30 +597,17 @@ const App: React.FC = () => {
                     )}
                   </div>
                 </div>
-
                 <div className="space-y-6">
                   <div className="flex items-center justify-between px-2">
                     <div className="flex items-center gap-2"><LayoutDashboard className="w-4 h-4 text-indigo-500" /><h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dein Ablauf</h3></div>
                     <span className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 bg-white dark:bg-slate-800 px-3 py-1 rounded-full border dark:border-slate-800 shadow-sm">{progress}% Done</span>
                   </div>
-
                   <div className="relative group">
                     <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
                     <input type="text" placeholder="Aufgaben durchsuchen..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-11 pr-10 py-3.5 bg-white dark:bg-slate-900 border-2 border-transparent focus:border-indigo-500/20 rounded-2xl text-sm outline-none transition-all shadow-sm dark:text-slate-200" />
-                    {searchQuery && <button onClick={() => setSearchQuery('')} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 dark:hover:text-slate-100 transition-colors"><X className="w-4 h-4" /></button>}
                   </div>
-
                   <div className="space-y-4">
-                    {processedTasks.length > 0 ? (
-                      processedTasks.map(task => (
-                        <TaskItem key={task.id} task={task} onToggle={toggleTask} onToggleImportant={toggleImportant} onDelete={deleteTask} onUpdate={updateTask} />
-                      ))
-                    ) : (
-                      <div className="py-12 text-center animate-in fade-in">
-                        <div className="inline-flex p-4 bg-slate-100 dark:bg-slate-800 rounded-full mb-3 text-slate-400"><Search className="w-6 h-6" /></div>
-                        <p className="text-sm text-slate-400">Keine Aufgaben für "{searchQuery}" gefunden.</p>
-                      </div>
-                    )}
+                    {processedTasks.map(task => <TaskItem key={task.id} task={task} onToggle={toggleTask} onToggleImportant={toggleImportant} onDelete={deleteTask} onUpdate={updateTask} />)}
                   </div>
                 </div>
                 <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border dark:border-slate-800 shadow-sm">
@@ -592,11 +616,9 @@ const App: React.FC = () => {
               </div>
             ) : (
               <div className="h-full flex flex-col items-center justify-center p-12 text-center animate-in fade-in">
-                <div className="w-24 h-24 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6">
-                  <LayoutDashboard className="w-10 h-10 text-slate-300 dark:text-slate-600" />
-                </div>
+                <div className="w-24 h-24 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center mb-6"><LayoutDashboard className="w-10 h-10 text-slate-300 dark:text-slate-600" /></div>
                 <h3 className="font-bold text-xl dark:text-slate-200">Bereit für den Tag?</h3>
-                <p className="text-sm text-slate-400 mt-2 mb-10 max-w-[200px]">NoteHub hilft dir. Erzähl mir was ansteht oder schick ein Foto!</p>
+                <p className="text-sm text-slate-400 mt-2 mb-10 max-w-[200px]">NoteHub hilft dir. Erzähl mir was ansteht!</p>
                 <div className="w-full p-8 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-[3rem] shadow-sm">
                   <VoiceAssistant tasks={tasks} onAddTask={addTask} onDeleteTask={deleteTask} onUpdateTask={updateTask} onPlayBriefing={handlePlayBriefing} selectedVoice={selectedVoice} />
                 </div>
