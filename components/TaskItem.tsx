@@ -13,7 +13,6 @@ import {
   Maximize2,
   Bell,
   Zap,
-  ChevronDown,
   Edit2,
   Check
 } from 'lucide-react';
@@ -131,35 +130,35 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
         relative flex flex-col p-5 rounded-[2.5rem] transition-all border-2
         ${task.isImportant && !task.completed 
           ? 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/10 shadow-lg' 
-          : 'border-transparent shadow-sm hover:border-slate-100 dark:hover:border-slate-800 bg-white dark:bg-slate-900'
+          : 'border-transparent shadow-sm bg-white dark:bg-slate-900'
         }
-        ${task.completed ? 'bg-slate-50 dark:bg-slate-950 opacity-50 border-transparent shadow-none scale-[0.98]' : ''}
+        ${task.completed ? 'bg-slate-50 dark:bg-slate-950 opacity-60 border-transparent shadow-none scale-[0.98]' : ''}
       `}>
         <div className="flex items-center justify-between w-full">
           <div className="flex items-center gap-4 flex-1 min-w-0">
-            <button onClick={() => onToggle(task.id)} className="text-slate-300 dark:text-slate-700 hover:text-green-500 transition-all active:scale-90 shrink-0">
-              {task.completed ? <CheckCircle className="w-7 h-7 text-green-500" /> : <Circle className="w-7 h-7" />}
+            <button onClick={() => onToggle(task.id)} className="text-slate-400 dark:text-slate-600 hover:text-green-500 transition-all active:scale-90 shrink-0">
+              {task.completed ? <CheckCircle className="w-8 h-8 text-green-500" /> : <Circle className="w-8 h-8" />}
             </button>
             
-            <div className="flex flex-col flex-1 min-w-0">
+            <div className="flex flex-col flex-1 min-w-0" onClick={() => !task.completed && !isEditing && setIsEditing(true)}>
               {isEditing ? (
-                <div className="space-y-2 pr-4">
+                <div className="space-y-2 pr-2" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="text"
                     value={editTitle}
                     onChange={(e) => setEditTitle(e.target.value)}
-                    className="w-full bg-slate-50 dark:bg-slate-800 border-none outline-none rounded-xl px-3 py-1.5 text-sm font-bold text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-indigo-500/20"
+                    className="w-full bg-slate-100 dark:bg-slate-800 border-2 border-indigo-500/30 outline-none rounded-xl px-3 py-2 text-sm font-bold text-slate-700 dark:text-slate-200"
                     placeholder="Aufgabenname..."
                     autoFocus
                     onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit()}
                   />
                   <div className="flex items-center gap-2">
-                    <Clock className="w-3 h-3 text-slate-400" />
+                    <Clock className="w-3.5 h-3.5 text-slate-400" />
                     <input
                       type="text"
                       value={editTime}
                       onChange={(e) => setEditTime(e.target.value)}
-                      className="bg-slate-50 dark:bg-slate-800 border-none outline-none rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-slate-500 focus:ring-2 focus:ring-indigo-500/20"
+                      className="bg-slate-100 dark:bg-slate-800 border-none outline-none rounded-lg px-2 py-1 text-[10px] font-black uppercase tracking-widest text-slate-500"
                       placeholder="Zeit (z.B. 14:00)"
                       onKeyDown={(e) => e.key === 'Enter' && handleSaveEdit()}
                     />
@@ -168,28 +167,26 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
               ) : (
                 <>
                   <div className="flex items-center gap-2">
-                    {/* Priority Dropdown Trigger */}
-                    <div className="relative" ref={priorityMenuRef}>
+                    <div className="relative" ref={priorityMenuRef} onClick={(e) => e.stopPropagation()}>
                       <button 
                         onClick={() => !task.completed && setShowPriorityMenu(!showPriorityMenu)}
                         className={`
-                          w-7 h-7 flex items-center justify-center rounded-lg border text-[10px] font-black shrink-0 transition-transform active:scale-95
+                          w-8 h-8 flex items-center justify-center rounded-xl border text-[11px] font-black shrink-0 transition-transform active:scale-95
                           ${currentPriority.color}
                           ${!task.completed ? 'cursor-pointer' : 'cursor-default'}
                         `}
-                        title="Priorität ändern"
                       >
                         {currentPriority.symbol}
                       </button>
                       
                       {showPriorityMenu && (
-                        <div className="absolute top-full left-0 mt-2 z-[100] w-32 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-2xl p-1.5 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="absolute top-full left-0 mt-2 z-[100] w-36 bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 rounded-2xl shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200">
                           {(Object.keys(priorityConfig) as Array<'low' | 'medium' | 'high'>).map((prio) => (
                             <button
                               key={prio}
                               onClick={() => handlePriorityChange(prio)}
                               className={`
-                                w-full flex items-center gap-3 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors
+                                w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors mb-1 last:mb-0
                                 ${task.priority === prio 
                                   ? priorityConfig[prio].color 
                                   : 'text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'
@@ -207,7 +204,7 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
                     <span className={`font-bold text-sm truncate ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>
                       {task.title}
                     </span>
-                    {task.isImportant && !task.completed && <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500 animate-pulse shrink-0" />}
+                    {task.isImportant && !task.completed && <Star className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse shrink-0" />}
                   </div>
                   
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
@@ -219,50 +216,47 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
             </div>
 
             {task.imageUrl && !isEditing && (
-              <div className="relative w-14 h-14 rounded-2xl overflow-hidden border-2 border-white dark:border-slate-800 shadow-xl cursor-zoom-in shrink-0 group" onClick={() => setIsPreviewOpen(true)}>
+              <div className="relative w-14 h-14 rounded-2xl overflow-hidden border-2 border-white dark:border-slate-800 shadow-xl cursor-zoom-in shrink-0" onClick={(e) => { e.stopPropagation(); setIsPreviewOpen(true); }}>
                 <img src={task.imageUrl} className="w-full h-full object-cover" alt="" />
-                <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
                   <Maximize2 className="w-4 h-4 text-white" />
                 </div>
               </div>
             )}
           </div>
           
-          <div className="flex items-center gap-1 ml-4 shrink-0">
+          <div className="flex items-center gap-1 ml-3 shrink-0">
             {isEditing ? (
-              <>
-                <button onClick={handleSaveEdit} className="p-2.5 rounded-xl text-green-500 hover:bg-green-50 dark:hover:bg-green-900/20 transition-all" title="Speichern">
+              <div className="flex flex-col gap-1">
+                <button onClick={handleSaveEdit} className="p-2.5 rounded-xl bg-green-500 text-white shadow-sm active:scale-90" title="Speichern">
                   <Check className="w-4 h-4" />
                 </button>
-                <button onClick={handleCancelEdit} className="p-2.5 rounded-xl text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all" title="Abbrechen">
+                <button onClick={handleCancelEdit} className="p-2.5 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-500 active:scale-90" title="Abbrechen">
                   <X className="w-4 h-4" />
                 </button>
-              </>
+              </div>
             ) : (
-              <>
+              <div className="flex flex-wrap items-center justify-end gap-1 max-w-[80px]">
                 <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
                 
                 {!task.completed && (
                   <>
-                    <button onClick={() => setIsEditing(true)} className="p-2.5 rounded-xl text-slate-200 dark:text-slate-800 hover:text-indigo-500 transition-all" title="Bearbeiten">
+                    <button onClick={(e) => { e.stopPropagation(); setIsEditing(true); }} className="p-2.5 rounded-xl text-slate-400 dark:text-slate-500 hover:text-indigo-500 active:bg-slate-100 dark:active:bg-slate-800" title="Bearbeiten">
                       <Edit2 className="w-4 h-4" />
                     </button>
-                    <button onClick={() => setIsCameraOpen(true)} className={`p-2.5 rounded-xl transition-all ${isCameraOpen ? 'bg-indigo-500 text-white' : 'text-slate-200 dark:text-slate-800 hover:text-indigo-500'}`} title="Foto machen">
+                    <button onClick={(e) => { e.stopPropagation(); setIsCameraOpen(true); }} className={`p-2.5 rounded-xl transition-all ${isCameraOpen ? 'bg-indigo-500 text-white' : 'text-slate-400 dark:text-slate-500 hover:text-indigo-500'}`} title="Foto machen">
                       <Camera className="w-4 h-4" />
                     </button>
-                    <button onClick={() => fileInputRef.current?.click()} className="p-2.5 rounded-xl text-slate-200 dark:text-slate-800 hover:text-indigo-500 transition-all" title="Bild hochladen">
-                      <ImageIcon className="w-4 h-4" />
-                    </button>
-                    <button onClick={() => onToggleImportant?.(task.id)} className={`p-2.5 rounded-xl transition-all ${task.isImportant ? 'text-amber-500 bg-amber-50 dark:bg-amber-900/30' : 'text-slate-200 dark:text-slate-800 hover:text-amber-400'}`}>
+                    <button onClick={(e) => { e.stopPropagation(); onToggleImportant?.(task.id); }} className={`p-2.5 rounded-xl transition-all ${task.isImportant ? 'text-amber-500' : 'text-slate-400 dark:text-slate-500 hover:text-amber-400'}`}>
                       <Star className={`w-4 h-4 ${task.isImportant ? 'fill-current' : ''}`} />
                     </button>
                   </>
                 )}
 
-                <button onClick={() => setIsConfirming(true)} className="text-slate-200 dark:text-slate-800 hover:text-red-500 p-2.5 transition-all rounded-xl">
+                <button onClick={(e) => { e.stopPropagation(); setIsConfirming(true); }} className="text-slate-400 dark:text-slate-500 hover:text-red-500 p-2.5 active:bg-red-50 dark:active:bg-red-900/20 rounded-xl">
                   <Trash2 className="w-4 h-4" />
                 </button>
-              </>
+              </div>
             )}
           </div>
         </div>
@@ -287,7 +281,6 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
                 </div>
               </div>
             </div>
-            <p className="text-[10px] text-center mt-2 font-bold text-slate-400 uppercase tracking-widest">Kamera aktiv</p>
           </div>
         )}
         <canvas ref={canvasRef} className="hidden" />
@@ -298,33 +291,33 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
           <button onClick={() => setIsPreviewOpen(false)} className="absolute top-6 right-6 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-colors">
             <X className="w-8 h-8" />
           </button>
-          <div className="max-w-4xl w-full max-h-[75vh] rounded-[3rem] overflow-hidden shadow-2xl border border-white/5 relative bg-slate-900">
+          <div className="max-w-4xl w-full max-h-[70vh] rounded-[3rem] overflow-hidden shadow-2xl border border-white/5 relative bg-slate-900">
             <img src={task.imageUrl} className="w-full h-full object-contain" alt="" />
           </div>
           <div className="mt-8 text-center space-y-4">
             <h2 className="text-white text-xl font-black">{task.title}</h2>
             <div className="flex gap-4">
-               <button onClick={() => { onUpdate?.(task.id, { imageUrl: undefined }); setIsPreviewOpen(false); }} className="px-6 py-3 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-2xl text-xs font-bold transition-all flex items-center gap-2">
+               <button onClick={() => { onUpdate?.(task.id, { imageUrl: undefined }); setIsPreviewOpen(false); }} className="px-6 py-4 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-2xl text-xs font-bold transition-all flex items-center gap-2">
                 <Trash2 className="w-4 h-4" /> Bild entfernen
               </button>
-              <button onClick={() => setIsPreviewOpen(false)} className="px-8 py-3 bg-white text-slate-900 rounded-2xl text-xs font-bold shadow-xl active:scale-95 transition-all">Schließen</button>
+              <button onClick={() => setIsPreviewOpen(false)} className="px-8 py-4 bg-white text-slate-900 rounded-2xl text-xs font-bold shadow-xl active:scale-95 transition-all">Schließen</button>
             </div>
           </div>
         </div>
       )}
 
       {isConfirming && (
-        <div className="fixed inset-0 z-[260] flex items-center justify-center p-6 animate-in fade-in duration-200">
-          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setIsConfirming(false)} />
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl border dark:border-slate-800 text-center animate-in zoom-in-95">
-            <div className="w-16 h-16 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
-              <Trash2 className="w-8 h-8 text-red-500" />
+        <div className="fixed inset-0 z-[500] flex items-center justify-center p-6 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-md" onClick={() => setIsConfirming(false)} />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-sm rounded-[3rem] p-8 shadow-2xl border dark:border-slate-800 text-center animate-in zoom-in-95">
+            <div className="w-20 h-20 bg-red-50 dark:bg-red-900/20 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Trash2 className="w-10 h-10 text-red-500" />
             </div>
-            <h3 className="text-lg font-bold mb-2">Aufgabe löschen?</h3>
-            <p className="text-xs text-slate-400 mb-8 leading-relaxed">Möchtest du diese Aufgabe wirklich entfernen?</p>
-            <div className="flex flex-col gap-2">
-              <button onClick={() => { onDelete(task.id); setIsConfirming(false); }} className="w-full py-4 bg-red-500 text-white rounded-2xl font-bold active:scale-95 transition-all">Löschen</button>
-              <button onClick={() => setIsConfirming(false)} className="w-full py-4 text-slate-400 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 rounded-2xl transition-all">Behalten</button>
+            <h3 className="text-2xl font-black mb-2 dark:text-white">Aufgabe löschen?</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-8 leading-relaxed">Möchtest du "{task.title}" wirklich dauerhaft aus deinem Plan entfernen?</p>
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setIsConfirming(false)} className="py-4 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded-2xl font-bold active:scale-95 transition-all">Behalten</button>
+              <button onClick={() => { onDelete(task.id); setIsConfirming(false); }} className="py-4 bg-red-500 text-white rounded-2xl font-bold shadow-lg shadow-red-500/20 active:scale-95 transition-all">Löschen</button>
             </div>
           </div>
         </div>

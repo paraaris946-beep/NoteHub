@@ -110,7 +110,6 @@ const App: React.FC = () => {
   const [activeNotification, setActiveNotification] = useState<Task | null>(null);
   const triggeredRemindersRef = useRef<Set<string>>(new Set());
   const tasksRef = useRef<Task[]>(tasks);
-
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
 
   useEffect(() => { tasksRef.current = tasks; }, [tasks]);
@@ -129,7 +128,7 @@ const App: React.FC = () => {
   useEffect(() => {
     chatRef.current = startCoachingChat();
     
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitRecognition;
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       recognitionRef.current = new SpeechRecognition();
       recognitionRef.current.continuous = false;
@@ -177,13 +176,6 @@ const App: React.FC = () => {
     if (isDarkMode) document.documentElement.classList.add('dark');
     else document.documentElement.classList.remove('dark');
   }, [isDarkMode]);
-
-  const handleClearChat = () => {
-    if (window.confirm('Verlauf löschen?')) {
-      setMessages([INITIAL_MESSAGE]);
-      setIsPanelOpen('none');
-    }
-  };
 
   const playAudio = async (audioBase64: string, label: string) => {
     handleStopPlayback();
@@ -276,6 +268,13 @@ const App: React.FC = () => {
     else recognitionRef.current?.start();
   };
 
+  const handleClearChat = () => {
+    if (window.confirm('Verlauf löschen?')) {
+      setMessages([INITIAL_MESSAGE]);
+      setIsPanelOpen('none');
+    }
+  };
+
   return (
     <div className={`flex flex-col h-full overflow-hidden ${isDarkMode ? 'dark bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
       
@@ -301,16 +300,16 @@ const App: React.FC = () => {
       <header className="px-6 py-4 flex items-center justify-between border-b dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
         <div className="flex items-center gap-3">
           <Brain className="w-6 h-6 text-indigo-500" />
-          <h1 className="font-black text-lg">NoteHub</h1>
+          <h1 className="font-black text-lg tracking-tight">NoteHub</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl active:bg-slate-100 dark:active:bg-slate-800 transition-colors">
+        <div className="flex items-center gap-1">
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2.5 rounded-xl active:bg-slate-100 dark:active:bg-slate-800 transition-colors">
             {isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           </button>
-          <button onClick={() => setIsPanelOpen('voice')} className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500">
+          <button onClick={() => setIsPanelOpen('voice')} className="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500">
             <Mic className="w-5 h-5" />
           </button>
-          <button onClick={() => setIsPanelOpen('settings')} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800">
+          <button onClick={() => setIsPanelOpen('settings')} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800">
             <Settings className="w-5 h-5" />
           </button>
         </div>
@@ -323,14 +322,12 @@ const App: React.FC = () => {
         <section className={`flex-1 flex flex-col overflow-y-auto p-6 gap-6 custom-scrollbar ${activeTab === 'plan' ? 'flex' : 'hidden md:flex'}`}>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black">Plan</h2>
-            <div className="flex items-center gap-2">
-              <button onClick={() => setTasks([...tasks, { id: Math.random().toString(), title: 'Neue Aufgabe', completed: false, priority: 'medium', category: 'General' }])} className="p-2.5 bg-indigo-500 text-white rounded-2xl shadow-lg active:scale-95 transition-all">
-                <Plus className="w-5 h-5" />
-              </button>
-            </div>
+            <button onClick={() => setTasks([...tasks, { id: Math.random().toString(), title: 'Neue Aufgabe', completed: false, priority: 'medium', category: 'General' }])} className="p-3 bg-indigo-500 text-white rounded-2xl shadow-lg active:scale-95 transition-all">
+              <Plus className="w-5 h-5" />
+            </button>
           </div>
           <MoodTracker currentMood={userStats.mood} onMoodSelect={(m) => setUserStats({ ...userStats, mood: m })} />
-          <div className="space-y-3 pb-4">
+          <div className="space-y-3 pb-8">
             {tasks.map(task => (
               <TaskItem 
                 key={task.id} 
@@ -346,18 +343,25 @@ const App: React.FC = () => {
 
         {/* Chat Section */}
         <section className={`flex-1 border-l dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col overflow-hidden ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}`}>
-          <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+          <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar">
             {messages.map(msg => (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} group`}>
-                <div className={`max-w-[85%] p-4 rounded-[1.8rem] relative ${msg.role === 'user' ? 'bg-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-800 dark:text-slate-100'}`}>
+              <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+                <div className={`max-w-[85%] p-4 rounded-[1.8rem] relative ${msg.role === 'user' ? 'bg-indigo-500 text-white shadow-md' : 'bg-slate-100 dark:bg-slate-800 dark:text-slate-100'}`}>
                   <p className="text-sm leading-relaxed">{msg.text}</p>
-                  
-                  <div className={`absolute bottom-0 ${msg.role === 'user' ? '-left-10' : '-right-10'} flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity`}>
-                    {msg.role === 'user' && (
-                      <button onClick={() => handleEditMessage(msg)} className="p-2 text-slate-400 hover:text-indigo-500"><Edit2 className="w-4 h-4" /></button>
-                    )}
-                    <button onClick={() => handlePlayMessage(msg.text)} className="p-2 text-slate-400 hover:text-indigo-500"><Volume2 className="w-4 h-4" /></button>
-                  </div>
+                </div>
+                
+                {/* Visible Actions for mobile directly below bubble */}
+                <div className={`flex items-center gap-3 mt-1 px-2 ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                  {msg.role === 'user' && (
+                    <button onClick={() => handleEditMessage(msg)} className="p-1.5 text-slate-400 dark:text-slate-600 hover:text-indigo-500 flex items-center gap-1 active:scale-90 transition-all">
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span className="text-[9px] font-bold uppercase tracking-widest">Ändern</span>
+                    </button>
+                  )}
+                  <button onClick={() => handlePlayMessage(msg.text)} className="p-1.5 text-slate-400 dark:text-slate-600 hover:text-indigo-500 flex items-center gap-1 active:scale-90 transition-all">
+                    <Volume2 className="w-3.5 h-3.5" />
+                    <span className="text-[9px] font-bold uppercase tracking-widest">Hören</span>
+                  </button>
                 </div>
               </div>
             ))}
@@ -366,28 +370,28 @@ const App: React.FC = () => {
 
           <ThoughtVisualizer active={isLoading} />
 
-          {/* Fixed Chat Input Area inside the Chat Column */}
-          <div className="p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t dark:border-slate-800 shrink-0 mb-safe">
+          {/* Chat Input Area - Robust for Mobile */}
+          <div className="p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t dark:border-slate-800 shrink-0">
             {editingMessageId && (
-              <div className="flex items-center justify-between px-4 py-2 bg-indigo-50 dark:bg-indigo-900/20 rounded-t-2xl border-x border-t dark:border-slate-800 text-[10px] font-bold text-indigo-500 uppercase tracking-widest">
-                <span>Nachricht bearbeiten</span>
-                <button onClick={() => { setEditingMessageId(null); setUserInput(''); }}><X className="w-3 h-3" /></button>
+              <div className="flex items-center justify-between px-4 py-2 bg-indigo-50 dark:bg-indigo-900/40 rounded-t-2xl border-x border-t dark:border-slate-800 text-[10px] font-black text-indigo-500 uppercase tracking-widest animate-in slide-in-from-bottom-1">
+                <span className="flex items-center gap-2"><Edit2 className="w-3 h-3" /> Nachricht korrigieren</span>
+                <button onClick={() => { setEditingMessageId(null); setUserInput(''); }} className="p-1"><X className="w-4 h-4" /></button>
               </div>
             )}
-            <form onSubmit={handleSendMessage} className={`flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-full shadow-inner ${editingMessageId ? 'rounded-t-none' : ''}`}>
-              <button type="button" onClick={toggleMic} className={`p-3 rounded-full transition-colors ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
+            <form onSubmit={handleSendMessage} className={`flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-full shadow-inner border-2 transition-colors ${editingMessageId ? 'rounded-t-none border-indigo-500/50' : 'border-transparent'}`}>
+              <button type="button" onClick={toggleMic} className={`p-3 rounded-full transition-colors ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400'}`}>
                 <Mic className="w-5 h-5" />
               </button>
               <input 
                 value={userInput} 
                 onChange={(e) => setUserInput(e.target.value)} 
-                placeholder="NoteHub fragen..." 
+                placeholder="Schreibe etwas..." 
                 className="flex-1 bg-transparent border-none outline-none text-sm px-2 py-2 text-slate-700 dark:text-slate-200" 
               />
               <button 
                 type="submit" 
                 disabled={isLoading || !userInput.trim()} 
-                className={`p-3 rounded-full transition-all ${userInput.trim() ? 'bg-indigo-500 text-white shadow-lg' : 'bg-slate-200 dark:bg-slate-700 text-slate-400 opacity-50'}`}
+                className={`p-3 rounded-full transition-all ${userInput.trim() ? 'bg-indigo-500 text-white shadow-lg active:scale-90' : 'bg-slate-200 dark:bg-slate-700 text-slate-400 opacity-50'}`}
               >
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
               </button>
@@ -396,49 +400,35 @@ const App: React.FC = () => {
         </section>
 
         {/* Tab Navigation for Mobile */}
-        <nav className="fixed bottom-0 inset-x-0 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t dark:border-slate-800 flex items-center justify-around md:hidden z-50 px-safe pb-safe shadow-[0_-4px_20px_-5px_rgba(0,0,0,0.1)]">
-          <button onClick={() => setActiveTab('plan')} className={`flex-1 flex flex-col items-center gap-1 transition-colors ${activeTab === 'plan' ? 'text-indigo-500' : 'text-slate-400'}`}>
+        <nav className="fixed bottom-0 inset-x-0 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t dark:border-slate-800 flex items-center justify-around md:hidden z-50 px-safe pb-safe shadow-lg">
+          <button onClick={() => setActiveTab('plan')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${activeTab === 'plan' ? 'text-indigo-500 scale-110' : 'text-slate-400'}`}>
             <ListTodo className="w-6 h-6" />
             <span className="text-[10px] font-black uppercase tracking-widest">Plan</span>
           </button>
-          <button onClick={() => setActiveTab('chat')} className={`flex-1 flex flex-col items-center gap-1 transition-colors ${activeTab === 'chat' ? 'text-indigo-500' : 'text-slate-400'}`}>
+          <button onClick={() => setActiveTab('chat')} className={`flex-1 flex flex-col items-center gap-1 transition-all ${activeTab === 'chat' ? 'text-indigo-500 scale-110' : 'text-slate-400'}`}>
             <MessageSquare className="w-6 h-6" />
             <span className="text-[10px] font-black uppercase tracking-widest">Chat</span>
           </button>
         </nav>
       </main>
 
-      {/* Notifications and Panels */}
-      {activeNotification && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 animate-in fade-in">
-          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setActiveNotification(null)} />
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-xs rounded-[2.5rem] p-8 text-center shadow-2xl scale-in-center">
-            <Bell className="w-12 h-12 text-indigo-500 mx-auto mb-6 animate-bounce" />
-            <h3 className="text-xl font-black mb-1">{activeNotification.title}</h3>
-            <p className="text-xs text-slate-400 mb-6">Zeit für deine Aufgabe!</p>
-            <button onClick={() => setActiveNotification(null)} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-lg active:scale-95 transition-all">Verstanden</button>
-          </div>
-        </div>
-      )}
-
+      {/* Panels */}
       {isPanelOpen !== 'none' && (
         <div className="fixed inset-y-0 right-0 z-[200] w-full max-w-md bg-white dark:bg-slate-900 shadow-2xl p-8 overflow-y-auto animate-in slide-in-from-right duration-300">
           <div className="flex justify-between items-center mb-8">
-            <h2 className="text-2xl font-black">{isPanelOpen === 'settings' ? 'Einstellungen' : 'Voice Assistant'}</h2>
-            <button onClick={() => setIsPanelOpen('none')} className="p-2 bg-slate-100 dark:bg-slate-800 rounded-full"><X className="w-6 h-6" /></button>
+            <h2 className="text-2xl font-black">{isPanelOpen === 'settings' ? 'Profil' : 'Sprache'}</h2>
+            <button onClick={() => setIsPanelOpen('none')} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full active:scale-90 transition-all"><X className="w-6 h-6" /></button>
           </div>
           
           {isPanelOpen === 'voice' && (
-            <div className="py-4">
-              <VoiceAssistant 
-                tasks={tasks} 
-                onAddTask={(t) => setTasks([...tasks, t])} 
-                onDeleteTask={(id) => setTasks(tasks.filter(t => t.id !== id))} 
-                onUpdateTask={(id, updates) => setTasks(tasks.map(t => t.id === id ? { ...t, ...updates } : t))} 
-                onPlayBriefing={handlePlayBriefing} 
-                selectedVoice={selectedVoice} 
-              />
-            </div>
+            <VoiceAssistant 
+              tasks={tasks} 
+              onAddTask={(t) => setTasks([...tasks, t])} 
+              onDeleteTask={(id) => setTasks(tasks.filter(t => t.id !== id))} 
+              onUpdateTask={(id, updates) => setTasks(tasks.map(t => t.id === id ? { ...t, ...updates } : t))} 
+              onPlayBriefing={handlePlayBriefing} 
+              selectedVoice={selectedVoice} 
+            />
           )}
           
           {isPanelOpen === 'settings' && (
@@ -446,7 +436,7 @@ const App: React.FC = () => {
               <section className="space-y-6">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl"><UserCircle className="w-5 h-5 text-indigo-500" /></div>
-                  <h3 className="font-black text-sm uppercase tracking-widest text-slate-400">Dein Profil</h3>
+                  <h3 className="font-black text-sm uppercase tracking-widest text-slate-400">Personalisiert</h3>
                 </div>
                 <div className="space-y-4">
                   <div className="space-y-2">
@@ -457,7 +447,7 @@ const App: React.FC = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Geburtsdatum</label>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Geburtstag</label>
                     <div className="relative flex items-center">
                       <Calendar className="absolute left-4 w-4 h-4 text-slate-300" />
                       <input type="date" value={userProfile.birthDate} onChange={(e) => setUserProfile({ ...userProfile, birthDate: e.target.value })} className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20" />
@@ -469,7 +459,7 @@ const App: React.FC = () => {
               <section className="space-y-6">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl"><Volume2 className="w-5 h-5 text-indigo-500" /></div>
-                  <h3 className="font-black text-sm uppercase tracking-widest text-slate-400">KI-Stimme</h3>
+                  <h3 className="font-black text-sm uppercase tracking-widest text-slate-400">KI-Stimme wählen</h3>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
                   {VOICES.map((voice) => (
@@ -486,7 +476,7 @@ const App: React.FC = () => {
 
               <section className="space-y-6 pt-4 border-t dark:border-slate-800">
                 <button onClick={handleClearChat} className="w-full p-5 bg-red-50 dark:bg-red-900/10 text-red-600 rounded-3xl font-black text-xs uppercase tracking-widest hover:bg-red-100 dark:hover:bg-red-900/20 transition-all active:scale-95 flex items-center justify-center gap-2">
-                  <Trash2 className="w-4 h-4" /> Verlauf löschen
+                  <Trash2 className="w-4 h-4" /> Chat Verlauf löschen
                 </button>
               </section>
             </div>
