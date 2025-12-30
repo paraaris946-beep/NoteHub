@@ -31,7 +31,8 @@ import {
   Brain,
   Bell,
   Check,
-  Play
+  Play,
+  MessageSquare
 } from 'lucide-react';
 
 const INITIAL_MESSAGE: Message = { 
@@ -57,7 +58,7 @@ const ThoughtVisualizer: React.FC<{ active: boolean; profile: UserProfile; tasks
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Brain className="w-5 h-5 text-indigo-500 animate-pulse" />
-            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">NoteHub analysiert...</span>
+            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">NoteHub denkt nach...</span>
           </div>
           <div className="flex gap-1">
             {[1, 2, 3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.1}s` }} />)}
@@ -66,11 +67,11 @@ const ThoughtVisualizer: React.FC<{ active: boolean; profile: UserProfile; tasks
         <div className="grid grid-cols-2 gap-3">
           <div className="flex items-center gap-2 p-3 rounded-2xl border border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/20">
             <User className="w-3.5 h-3.5 text-indigo-500" />
-            <span className="text-[11px] font-bold truncate dark:text-slate-200">Kontext: {profile.name || "Aktiv"}</span>
+            <span className="text-[11px] font-bold truncate dark:text-slate-200">{profile.name || "Assistent bereit"}</span>
           </div>
           <div className="flex items-center gap-2 p-3 rounded-2xl border border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/20">
             <LayoutDashboard className="w-3.5 h-3.5 text-indigo-500" />
-            <span className="text-[11px] font-bold truncate dark:text-slate-200">{tasksCount} Erinnerungen</span>
+            <span className="text-[11px] font-bold truncate dark:text-slate-200">{tasksCount} Einträge</span>
           </div>
         </div>
       </div>
@@ -107,7 +108,7 @@ const App: React.FC = () => {
   const [isBriefingLoading, setIsBriefingLoading] = useState(false);
   const [isLogoLoading, setIsLogoLoading] = useState(false);
   const [appLogoUrl, setAppLogoUrl] = useState<string | null>(null);
-  const [showPlan, setShowPlan] = useState(tasks.length > 0 || !!dayPlan);
+  const [showPlan, setShowPlan] = useState(tasks.length > 0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState(() => localStorage.getItem('minicoach_voice') || 'Kore');
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -213,6 +214,7 @@ const App: React.FC = () => {
         for await (const chunk of stream) { responseText += chunk.text; updateStreamingMessage(modelId, responseText); }
       }
 
+      // Check if the response contains structured task data
       if (responseText.includes('[PLAN_JSON]')) {
         const parts = responseText.split('[PLAN_JSON]');
         const potentialJson = parts[1]?.trim() || "";
@@ -223,14 +225,18 @@ const App: React.FC = () => {
           const planData = JSON.parse(cleanJson);
           setDayPlan(planData);
           setTasks(planData.tasks.map((t: any) => ({ ...t, completed: false })));
-          setShowPlan(true);
+          setShowPlan(true); // Open the plan view only if tasks were explicitly planned
           updateStreamingMessage(modelId, parts[0].trim());
           const img = await generateFocusImage(planData.focus);
           setFocusImageUrl(img);
         }
       }
-    } catch (err) { console.error(err); updateStreamingMessage(Date.now().toString(), "Entschuldige, da gab es ein Problem mit der Verbindung."); }
-    finally { setIsLoading(false); }
+    } catch (err) { 
+      console.error(err); 
+      updateStreamingMessage(Date.now().toString(), "Entschuldige, ich konnte keine Verbindung herstellen. Versuche es gleich noch einmal."); 
+    } finally { 
+      setIsLoading(false); 
+    }
   };
 
   const updateStreamingMessage = (id: string, text: string) => {
@@ -314,6 +320,11 @@ const App: React.FC = () => {
           <h1 className="font-bold text-lg dark:text-white">NoteHub</h1>
         </div>
         <div className="flex items-center gap-2">
+          {!showPlan && tasks.length > 0 && (
+            <button onClick={() => setShowPlan(true)} className="p-2.5 rounded-2xl text-slate-400 hover:text-indigo-500 transition-colors">
+              <LayoutDashboard className="w-5 h-5" />
+            </button>
+          )}
           <button onClick={handlePlayBriefing} disabled={isBriefingLoading} className={`p-2.5 rounded-2xl ${isBriefingLoading ? 'bg-indigo-50 animate-pulse' : 'text-indigo-600'}`} title="Briefing abspielen"><Volume2 className="w-5 h-5" /></button>
           <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2.5 rounded-2xl text-slate-400">{isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}</button>
           <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 rounded-2xl"><Settings className="w-5 h-5 text-slate-300" /></button>
@@ -379,7 +390,7 @@ const App: React.FC = () => {
                   const f = e.target.files?.[0];
                   if (f) { const r = new FileReader(); r.onload = () => setSelectedImage(r.result as string); r.readAsDataURL(f); }
                 }} className="hidden" />
-                <input value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Schreib NoteHub..." className="flex-1 bg-transparent px-4 py-5 text-sm outline-none dark:text-white" disabled={isLoading} />
+                <input value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Schreib NoteHub oder frag nach Empfehlungen..." className="flex-1 bg-transparent px-4 py-5 text-sm outline-none dark:text-white" disabled={isLoading} />
               </div>
               <button onClick={handleSendMessage} disabled={isLoading} className={`bg-slate-800 dark:bg-indigo-600 text-white p-5 rounded-[1.5rem] shadow-lg transition-all active:scale-90 ${isLoading ? 'opacity-50' : 'hover:shadow-indigo-500/20'}`}><Send className="w-6 h-6" /></button>
             </div>
