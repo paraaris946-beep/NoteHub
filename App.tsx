@@ -44,7 +44,9 @@ import {
   ChevronRight,
   UserCircle,
   FileText,
-  ListTodo
+  ListTodo,
+  Calendar,
+  Type as FontType
 } from 'lucide-react';
 
 const INITIAL_MESSAGE: Message = { 
@@ -65,8 +67,8 @@ const VOICES = [
 const ThoughtVisualizer: React.FC<{ active: boolean; profile: UserProfile }> = ({ active, profile }) => {
   if (!active) return null;
   return (
-    <div className="absolute bottom-24 left-6 right-6 z-30 animate-in fade-in slide-in-from-bottom-2 duration-300 md:bottom-20">
-      <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-indigo-500/30 rounded-2xl py-2 px-4 shadow-xl flex items-center gap-3">
+    <div className="px-6 py-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-indigo-500/30 rounded-2xl py-2 px-4 shadow-sm flex items-center gap-3 w-fit">
         <div className="flex gap-1">
           {[1, 2, 3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.1}s` }} />)}
         </div>
@@ -112,8 +114,6 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('minicoach_theme');
     return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
-  const [isPreviewingVoice, setIsPreviewingVoice] = useState<string | null>(null);
-  const [showVoicePicker, setShowVoicePicker] = useState(false);
   
   const [playbackState, setPlaybackState] = useState<'idle' | 'playing' | 'paused'>('idle');
   const [playbackLabel, setPlaybackLabel] = useState<string>('');
@@ -178,7 +178,7 @@ const App: React.FC = () => {
 
     const handleClickOutside = (event: MouseEvent) => {
       if (voicePickerRef.current && !voicePickerRef.current.contains(event.target as Node)) {
-        setShowVoicePicker(false);
+        // Voice picker logic removed to simplify
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -345,6 +345,7 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative pb-20 md:pb-0">
+        {/* Plan Tab */}
         <section className={`flex-1 flex flex-col overflow-y-auto p-6 gap-6 custom-scrollbar ${activeTab === 'plan' ? 'flex' : 'hidden md:flex'}`}>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black">Plan</h2>
@@ -355,13 +356,14 @@ const App: React.FC = () => {
             </div>
           </div>
           <MoodTracker currentMood={userStats.mood} onMoodSelect={(m) => setUserStats({ ...userStats, mood: m })} />
-          <div className="space-y-3 pb-24">
+          <div className="space-y-3 pb-8">
             {tasks.map(task => (<TaskItem key={task.id} task={task} onToggle={(id) => setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t))} onDelete={(id) => setTasks(tasks.filter(t => t.id !== id))} onUpdate={(id, updates) => setTasks(tasks.map(t => t.id === id ? { ...t, ...updates } : t))} onToggleImportant={(id) => setTasks(tasks.map(t => t.id === id ? { ...t, isImportant: !t.isImportant } : t))} />))}
           </div>
         </section>
 
-        <section className={`flex-1 border-l dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}`}>
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar pb-32">
+        {/* Chat Tab */}
+        <section className={`flex-1 border-l dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col overflow-hidden ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}`}>
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[85%] p-4 rounded-[1.8rem] relative group ${msg.role === 'user' ? 'bg-indigo-500 text-white' : 'bg-slate-100 dark:bg-slate-800 dark:text-slate-100'}`}>
@@ -377,8 +379,9 @@ const App: React.FC = () => {
 
           <ThoughtVisualizer active={isLoading} profile={userProfile} />
 
-          <div className="p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t dark:border-slate-800 absolute bottom-0 inset-x-0 pb-6">
-            <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-full">
+          {/* Fixed Chat Input for this column, but inside the flex flow */}
+          <div className="p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t dark:border-slate-800 shrink-0">
+            <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-full shadow-sm">
               <button type="button" onClick={toggleMic} className={`p-2.5 rounded-full ${isListening ? 'bg-red-500 text-white' : 'text-slate-400'}`}><Mic className="w-5 h-5" /></button>
               <input value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="NoteHub fragen..." className="flex-1 bg-transparent border-none outline-none text-sm px-2 py-2" />
               <button type="submit" disabled={isLoading} className="p-2.5 bg-indigo-500 text-white rounded-full">{isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}</button>
@@ -386,9 +389,16 @@ const App: React.FC = () => {
           </div>
         </section>
 
-        <nav className="fixed bottom-0 inset-x-0 h-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t dark:border-slate-800 flex items-center justify-around md:hidden z-50">
-          <button onClick={() => setActiveTab('plan')} className={activeTab === 'plan' ? 'text-indigo-500' : 'text-slate-400'}><ListTodo className="w-6 h-6" /></button>
-          <button onClick={() => setActiveTab('chat')} className={activeTab === 'chat' ? 'text-indigo-500' : 'text-slate-400'}><MessageSquare className="w-6 h-6" /></button>
+        {/* Tab Navigation for Mobile */}
+        <nav className="fixed bottom-0 inset-x-0 h-16 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t dark:border-slate-800 flex items-center justify-around md:hidden z-50 shadow-lg">
+          <button onClick={() => setActiveTab('plan')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'plan' ? 'text-indigo-500' : 'text-slate-400'}`}>
+            <ListTodo className="w-5 h-5" />
+            <span className="text-[9px] font-black uppercase tracking-widest">Plan</span>
+          </button>
+          <button onClick={() => setActiveTab('chat')} className={`flex flex-col items-center gap-1 transition-colors ${activeTab === 'chat' ? 'text-indigo-500' : 'text-slate-400'}`}>
+            <MessageSquare className="w-5 h-5" />
+            <span className="text-[9px] font-black uppercase tracking-widest">Chat</span>
+          </button>
         </nav>
       </main>
 
@@ -409,10 +419,102 @@ const App: React.FC = () => {
             <h2 className="text-xl font-bold">{isPanelOpen === 'settings' ? 'Einstellungen' : 'Voice'}</h2>
             <button onClick={() => setIsPanelOpen('none')} className="p-2"><X className="w-6 h-6" /></button>
           </div>
+          
           {isPanelOpen === 'voice' && <VoiceAssistant tasks={tasks} onAddTask={(t) => setTasks([...tasks, t])} onDeleteTask={(id) => setTasks(tasks.filter(t => t.id !== id))} onUpdateTask={(id, updates) => setTasks(tasks.map(t => t.id === id ? { ...t, ...updates } : t))} onPlayBriefing={handlePlayBriefing} selectedVoice={selectedVoice} />}
+          
           {isPanelOpen === 'settings' && (
-            <div className="space-y-6">
-              <button onClick={handleClearChat} className="w-full p-4 bg-red-50 text-red-600 rounded-2xl font-bold">Chat löschen</button>
+            <div className="space-y-10">
+              {/* Profile Section */}
+              <section className="space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl">
+                    <UserCircle className="w-5 h-5 text-indigo-500" />
+                  </div>
+                  <h3 className="font-black text-sm uppercase tracking-widest text-slate-400">Dein Profil</h3>
+                </div>
+                
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Name</label>
+                    <div className="relative flex items-center">
+                      <FontType className="absolute left-4 w-4 h-4 text-slate-300" />
+                      <input 
+                        type="text" 
+                        value={userProfile.name}
+                        onChange={(e) => setUserProfile({ ...userProfile, name: e.target.value })}
+                        placeholder="Dein Name"
+                        className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 ml-1">Geburtsdatum</label>
+                    <div className="relative flex items-center">
+                      <Calendar className="absolute left-4 w-4 h-4 text-slate-300" />
+                      <input 
+                        type="date" 
+                        value={userProfile.birthDate}
+                        onChange={(e) => setUserProfile({ ...userProfile, birthDate: e.target.value })}
+                        className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-slate-800 border-none rounded-2xl text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              {/* Voice Section */}
+              <section className="space-y-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-50 dark:bg-indigo-900/30 rounded-xl">
+                    <Volume2 className="w-5 h-5 text-indigo-500" />
+                  </div>
+                  <h3 className="font-black text-sm uppercase tracking-widest text-slate-400">KI-Stimme</h3>
+                </div>
+                
+                <div className="grid grid-cols-1 gap-2">
+                  {VOICES.map((voice) => (
+                    <button
+                      key={voice.id}
+                      onClick={() => setSelectedVoice(voice.id)}
+                      className={`
+                        flex items-center justify-between p-4 rounded-2xl transition-all border-2
+                        ${selectedVoice === voice.id 
+                          ? 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-500/30 text-indigo-600 dark:text-indigo-400 shadow-sm' 
+                          : 'bg-white dark:bg-slate-900 border-transparent hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-500'
+                        }
+                      `}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-2 h-2 rounded-full ${selectedVoice === voice.id ? 'bg-indigo-500' : 'bg-slate-200'}`} />
+                        <span className="text-sm font-black uppercase tracking-tight">{voice.name}</span>
+                      </div>
+                      <span className="text-[10px] font-bold opacity-60">{voice.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {/* System Section */}
+              <section className="space-y-6 pt-4 border-t dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-50 dark:bg-red-900/30 rounded-xl">
+                    <Trash2 className="w-5 h-5 text-red-500" />
+                  </div>
+                  <h3 className="font-black text-sm uppercase tracking-widest text-slate-400">Daten & Sicherheit</h3>
+                </div>
+                
+                <button 
+                  onClick={handleClearChat} 
+                  className="w-full p-5 bg-red-50 dark:bg-red-900/10 text-red-600 rounded-3xl font-black text-xs uppercase tracking-widest hover:bg-red-100 dark:hover:bg-red-900/20 transition-all active:scale-95"
+                >
+                  Gesamten Chat-Verlauf löschen
+                </button>
+                
+                <p className="text-[10px] text-center text-slate-400 leading-relaxed px-4">
+                  Hinweis: Das Löschen des Verlaufs ist endgültig. Deine Aufgabenliste bleibt jedoch erhalten.
+                </p>
+              </section>
             </div>
           )}
         </div>
