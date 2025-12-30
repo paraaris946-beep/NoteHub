@@ -12,6 +12,7 @@ import {
 } from './services/geminiService';
 import TaskItem from './components/TaskItem';
 import VoiceAssistant from './components/VoiceAssistant';
+import MoodTracker from './components/MoodTracker';
 import { 
   Settings, 
   Sparkles,
@@ -104,6 +105,10 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('minicoach_dayplan');
     return saved ? JSON.parse(saved) : null;
   });
+  const [userStats, setUserStats] = useState<UserStats>(() => {
+    const saved = localStorage.getItem('notehub_stats');
+    return saved ? JSON.parse(saved) : { completedTasks: 0, totalTasks: 0, mood: '', waterIntake: 0 };
+  });
   const [focusImageUrl, setFocusImageUrl] = useState<string | null>(() => localStorage.getItem('minicoach_focus_img'));
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('notehub_profile');
@@ -138,6 +143,7 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('minicoach_messages', JSON.stringify(messages)); }, [messages]);
   useEffect(() => { localStorage.setItem('minicoach_voice', selectedVoice); }, [selectedVoice]);
   useEffect(() => { localStorage.setItem('notehub_profile', JSON.stringify(userProfile)); }, [userProfile]);
+  useEffect(() => { localStorage.setItem('notehub_stats', JSON.stringify(userStats)); }, [userStats]);
   useEffect(() => { if (focusImageUrl) localStorage.setItem('minicoach_focus_img', focusImageUrl); }, [focusImageUrl]);
 
   useEffect(() => {
@@ -244,6 +250,10 @@ const App: React.FC = () => {
     finally { setIsBriefingLoading(false); }
   };
 
+  const handleUpdateMood = (mood: string) => {
+    setUserStats(prev => ({ ...prev, mood }));
+  };
+
   const addTask = (task: any) => { setTasks(prev => [...prev, task]); setShowPlan(true); };
   const toggleTask = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
   const toggleImportant = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, isImportant: !t.isImportant } : t));
@@ -326,6 +336,8 @@ const App: React.FC = () => {
         </div>
         <div className={`fixed md:relative inset-y-0 right-0 w-full md:w-2/5 bg-slate-50/90 dark:bg-slate-900/95 backdrop-blur-xl border-l dark:border-slate-800 z-20 transition-transform transform ${showPlan ? 'translate-x-0' : 'translate-x-full md:translate-x-0 md:opacity-0 md:pointer-events-none'}`}>
           <div className="h-full flex flex-col overflow-y-auto custom-scrollbar p-8 space-y-8">
+            <MoodTracker currentMood={userStats.mood} onMoodSelect={handleUpdateMood} />
+            
             {tasks.length > 0 || !!dayPlan ? (
               <>
                 <div className="relative h-56 rounded-[3rem] overflow-hidden shadow-2xl">
