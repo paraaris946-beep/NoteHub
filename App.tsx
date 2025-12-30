@@ -40,7 +40,8 @@ import {
   Volume1,
   Download,
   Pause,
-  Square
+  Square,
+  ChevronRight
 } from 'lucide-react';
 
 const INITIAL_MESSAGE: Message = { 
@@ -58,31 +59,15 @@ const VOICES = [
   { id: 'Fenrir', name: 'Fenrir', label: 'Rauh' },
 ];
 
-const ThoughtVisualizer: React.FC<{ active: boolean; profile: UserProfile; tasksCount: number }> = ({ active, profile, tasksCount }) => {
+const ThoughtVisualizer: React.FC<{ active: boolean; profile: UserProfile }> = ({ active, profile }) => {
   if (!active) return null;
   return (
-    <div className="absolute bottom-full left-0 right-0 mb-4 px-6 animate-in fade-in slide-in-from-bottom-4 duration-500 z-30">
-      <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-indigo-500/20 rounded-[2rem] p-6 shadow-2xl shadow-indigo-500/10 overflow-hidden relative">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-indigo-500 to-transparent animate-pulse" />
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-2">
-            <Brain className="w-5 h-5 text-indigo-500 animate-pulse" />
-            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">NoteHub denkt nach...</span>
-          </div>
-          <div className="flex gap-1">
-            {[1, 2, 3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.1}s` }} />)}
-          </div>
+    <div className="absolute bottom-20 left-6 right-6 z-30 animate-in fade-in slide-in-from-bottom-2 duration-300">
+      <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-indigo-500/30 rounded-2xl py-2 px-4 shadow-xl flex items-center gap-3">
+        <div className="flex gap-1">
+          {[1, 2, 3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.1}s` }} />)}
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div className="flex items-center gap-2 p-3 rounded-2xl border border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/20">
-            <User className="w-3.5 h-3.5 text-indigo-500" />
-            <span className="text-[11px] font-bold truncate dark:text-slate-200">{profile.name || "Assistent bereit"}</span>
-          </div>
-          <div className="flex items-center gap-2 p-3 rounded-2xl border border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/20">
-            <LayoutDashboard className="w-3.5 h-3.5 text-indigo-500" />
-            <span className="text-[11px] font-bold truncate dark:text-slate-200">{tasksCount} Einträge</span>
-          </div>
-        </div>
+        <span className="text-[10px] font-black text-indigo-500 uppercase tracking-widest">NoteHub denkt nach...</span>
       </div>
     </div>
   );
@@ -117,9 +102,8 @@ const App: React.FC = () => {
   const [isLogoLoading, setIsLogoLoading] = useState(false);
   const [appLogoUrl, setAppLogoUrl] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(tasks.length > 0);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isPanelOpen, setIsPanelOpen] = useState<'none' | 'settings' | 'voice'>('none');
   const [isListening, setIsListening] = useState(false);
-  const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState(() => localStorage.getItem('minicoach_voice') || 'Kore');
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('minicoach_theme');
@@ -220,7 +204,7 @@ const App: React.FC = () => {
   const handleClearChat = () => {
     if (window.confirm('Möchtest du wirklich den gesamten Chatverlauf löschen?')) {
       setMessages([INITIAL_MESSAGE]);
-      setIsSettingsOpen(false);
+      setIsPanelOpen('none');
     }
   };
 
@@ -243,57 +227,33 @@ const App: React.FC = () => {
     document.body.removeChild(link);
   };
 
-  // Central Audio Playback Handler
   const playAudio = async (audioBase64: string, label: string) => {
-    // Stop any existing playback
     handleStopPlayback();
-
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
     playbackCtxRef.current = ctx;
-    
     try {
       const buf = await decodeAudioData(decodeBase64(audioBase64), ctx, 24000, 1);
       const source = ctx.createBufferSource();
       source.buffer = buf;
       source.connect(ctx.destination);
       playbackSourceRef.current = source;
-      
-      source.onended = () => {
-        setPlaybackState('idle');
-        setPlaybackLabel('');
-      };
-
+      source.onended = () => { setPlaybackState('idle'); setPlaybackLabel(''); };
       setPlaybackLabel(label);
       setPlaybackState('playing');
       source.start();
-    } catch (err) {
-      console.error("Playback error", err);
-      setPlaybackState('idle');
-    }
+    } catch (err) { console.error("Playback error", err); setPlaybackState('idle'); }
   };
 
   const handleTogglePlayback = async () => {
     if (!playbackCtxRef.current) return;
-    if (playbackState === 'playing') {
-      await playbackCtxRef.current.suspend();
-      setPlaybackState('paused');
-    } else if (playbackState === 'paused') {
-      await playbackCtxRef.current.resume();
-      setPlaybackState('playing');
-    }
+    if (playbackState === 'playing') { await playbackCtxRef.current.suspend(); setPlaybackState('paused'); }
+    else if (playbackState === 'paused') { await playbackCtxRef.current.resume(); setPlaybackState('playing'); }
   };
 
   const handleStopPlayback = () => {
-    if (playbackSourceRef.current) {
-      try { playbackSourceRef.current.stop(); } catch (e) {}
-      playbackSourceRef.current = null;
-    }
-    if (playbackCtxRef.current) {
-      playbackCtxRef.current.close();
-      playbackCtxRef.current = null;
-    }
-    setPlaybackState('idle');
-    setPlaybackLabel('');
+    if (playbackSourceRef.current) { try { playbackSourceRef.current.stop(); } catch (e) {} playbackSourceRef.current = null; }
+    if (playbackCtxRef.current) { playbackCtxRef.current.close(); playbackCtxRef.current = null; }
+    setPlaybackState('idle'); setPlaybackLabel('');
   };
 
   const handlePlayBriefing = async () => {
@@ -302,20 +262,15 @@ const App: React.FC = () => {
     try {
       const audio = await generateBriefingAudio(tasks, dayPlan?.focus, dayPlan?.motivation, selectedVoice);
       await playAudio(audio, 'Tages-Briefing');
-    } catch (err) {
-      console.error("Briefing failed", err);
-    } finally {
-      setIsBriefingLoading(false);
-    }
+    } catch (err) { console.error("Briefing failed", err); }
+    finally { setIsBriefingLoading(false); }
   };
 
   const handlePlayMessage = async (text: string) => {
     try {
       const audio = await generateMessageAudio(text, selectedVoice);
       await playAudio(audio, 'Nachricht vorlesen');
-    } catch (err) {
-      console.error("Message audio failed", err);
-    }
+    } catch (err) { console.error("Message audio failed", err); }
   };
 
   const handlePreviewVoice = async (voiceId: string) => {
@@ -325,11 +280,8 @@ const App: React.FC = () => {
       const text = `Hallo, ich bin die Stimme ${voiceId}.`;
       const audio = await generateMessageAudio(text, voiceId);
       await playAudio(audio, `Vorschau: ${voiceId}`);
-    } catch (err) {
-      console.error("Voice preview failed", err);
-    } finally {
-      setIsPreviewingVoice(null);
-    }
+    } catch (err) { console.error("Voice preview failed", err); }
+    finally { setIsPreviewingVoice(null); }
   };
 
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -362,103 +314,134 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className={`min-h-screen flex flex-col ${isDarkMode ? 'dark bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
+    <div className={`h-screen flex flex-col overflow-hidden ${isDarkMode ? 'dark bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
       
-      {/* Audio Playback Controls Overlay */}
+      {/* Audio Playback Controls Overlay - DOCKED TO BOTTOM */}
       {playbackState !== 'idle' && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[150] w-[90%] max-w-sm animate-in slide-in-from-bottom-8 fade-in duration-500">
-          <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-indigo-500/30 p-4 rounded-[2.5rem] shadow-2xl flex items-center gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-indigo-500 flex items-center justify-center relative overflow-hidden shrink-0">
-               <div className="absolute inset-0 opacity-20">
-                  <div className={`w-full h-full bg-gradient-to-t from-white to-transparent ${playbackState === 'playing' ? 'animate-pulse' : ''}`} />
-               </div>
-               {playbackState === 'playing' ? <Volume2 className="w-6 h-6 text-white" /> : <Pause className="w-6 h-6 text-white" />}
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-sm animate-in slide-in-from-bottom-4 fade-in duration-500">
+          <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-indigo-500/30 p-3 rounded-[2rem] shadow-2xl flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shrink-0">
+               <Volume2 className={`w-5 h-5 text-white ${playbackState === 'playing' ? 'animate-pulse' : ''}`} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest truncate">{playbackLabel}</p>
-              <p className="text-xs font-bold dark:text-slate-200 truncate">{playbackState === 'playing' ? 'Wird abgespielt...' : 'Pausiert'}</p>
+              <p className="text-[9px] font-black text-indigo-500 uppercase tracking-widest truncate">{playbackLabel}</p>
+              <p className="text-[10px] font-bold dark:text-slate-300 truncate">{playbackState === 'playing' ? 'Wird abgespielt' : 'Pausiert'}</p>
             </div>
-            <div className="flex items-center gap-2">
-              <button onClick={handleTogglePlayback} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-slate-200 transition-all">
-                {playbackState === 'playing' ? <Pause className="w-5 h-5 text-slate-600 dark:text-slate-300" /> : <Play className="w-5 h-5 text-indigo-500" />}
+            <div className="flex items-center gap-1">
+              <button onClick={handleTogglePlayback} className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full">
+                {playbackState === 'playing' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 text-indigo-500" />}
               </button>
-              <button onClick={handleStopPlayback} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-red-500 hover:text-white transition-all">
-                <Square className="w-5 h-5" />
+              <button onClick={handleStopPlayback} className="p-2.5 bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-red-500 hover:text-white transition-colors">
+                <Square className="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {showVoiceOverlay && (
-        <div className="fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 animate-in fade-in zoom-in-95 duration-300">
-          <button onClick={() => setShowVoiceOverlay(false)} className="absolute top-8 right-8 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"><X className="w-8 h-8" /></button>
-          <div className="w-full max-w-sm">
-             <VoiceAssistant tasks={tasks} onAddTask={(t) => setTasks(prev => [...prev, t])} onDeleteTask={(id) => setTasks(prev => prev.filter(x => x.id !== id))} onUpdateTask={(id, updates) => setTasks(prev => prev.map(x => x.id === id ? { ...x, ...updates } : x))} onPlayBriefing={handlePlayBriefing} selectedVoice={selectedVoice} />
+      {/* Persistent Smart Panel (Sidebar / Drawer) */}
+      <div className={`
+        fixed inset-y-0 right-0 z-[200] w-full max-w-md transition-transform duration-500 ease-out
+        ${isPanelOpen !== 'none' ? 'translate-x-0' : 'translate-x-full'}
+      `}>
+        {/* Panel Backdrop - semi-transparent to keep "setup" visible */}
+        <div className={`absolute inset-0 bg-slate-950/20 backdrop-blur-sm transition-opacity duration-500 ${isPanelOpen !== 'none' ? 'opacity-100' : 'opacity-0'}`} onClick={() => setIsPanelOpen('none')} />
+        
+        <div className="relative h-full bg-white dark:bg-slate-900 border-l dark:border-slate-800 shadow-2xl flex flex-col p-8 overflow-y-auto custom-scrollbar">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-xl font-bold dark:text-white">
+              {isPanelOpen === 'settings' ? 'Einstellungen' : 'NoteHub Voice'}
+            </h2>
+            <button onClick={() => setIsPanelOpen('none')} className="p-2 bg-slate-50 dark:bg-slate-800 rounded-full">
+              <X className="w-5 h-5 text-slate-400" />
+            </button>
           </div>
-        </div>
-      )}
 
-      {activeNotification && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xl" onClick={() => setActiveNotification(null)} />
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-sm rounded-[3rem] p-10 shadow-2xl border-2 border-indigo-500/30 text-center animate-in zoom-in-95 duration-500 flex flex-col items-center">
-            <Bell className="w-12 h-12 text-indigo-500 mb-6 animate-bounce" />
-            <h3 className="text-2xl font-black mb-2">{activeNotification.title}</h3>
-            <p className="text-sm text-slate-400 mb-8">Erinnerung für {activeNotification.reminderAt} Uhr</p>
-            <button onClick={() => { setTasks(tasks.map(t => t.id === activeNotification.id ? { ...t, completed: true } : t)); setActiveNotification(null); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-500/20">Erledigt</button>
-          </div>
-        </div>
-      )}
+          {isPanelOpen === 'voice' && (
+            <div className="flex-1 flex flex-col justify-center gap-8">
+               <div className="bg-indigo-50/30 dark:bg-indigo-900/10 p-8 rounded-[3rem] border border-indigo-100 dark:border-indigo-800">
+                <VoiceAssistant 
+                  tasks={tasks} 
+                  onAddTask={(t) => setTasks(prev => [...prev, t])} 
+                  onDeleteTask={(id) => setTasks(prev => prev.filter(x => x.id !== id))} 
+                  onUpdateTask={(id, updates) => setTasks(prev => prev.map(x => x.id === id ? { ...x, ...updates } : x))} 
+                  onPlayBriefing={handlePlayBriefing} 
+                  selectedVoice={selectedVoice} 
+                />
+               </div>
+               <p className="text-xs text-center text-slate-400 dark:text-slate-500 px-6">
+                 Ich höre dir zu. Sprich einfach mit mir, um Aufgaben hinzuzufügen oder deinen Tag zu planen.
+               </p>
+            </div>
+          )}
 
-      <header className="p-4 flex items-center justify-between border-b dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-10">
+          {isPanelOpen === 'settings' && (
+            <div className="space-y-10">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2"><User className="w-4 h-4 text-indigo-500" /><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Profil</h3></div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nutzername</label>
+                  <input type="text" value={userProfile.name} onChange={(e) => setUserProfile(p => ({ ...p, name: e.target.value }))} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl outline-none" placeholder="Dein Name" />
+                </div>
+              </div>
+              
+              <div className="space-y-4">
+                 <div className="flex items-center gap-2 mb-2"><Volume2 className="w-4 h-4 text-indigo-500" /><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Stimme wählen</h3></div>
+                <div className="grid grid-cols-1 gap-2">
+                  {VOICES.map(v => (
+                    <div key={v.id} className="flex items-center gap-2">
+                      <button onClick={() => setSelectedVoice(v.id)} className={`flex-1 p-3 rounded-xl border-2 transition-all text-xs font-bold text-left flex items-center justify-between ${selectedVoice === v.id ? 'border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30' : 'border-slate-100 dark:border-slate-800 text-slate-400'}`}><span>{v.name} ({v.label})</span>{selectedVoice === v.id && <Check className="w-4 h-4" />}</button>
+                      <button onClick={() => handlePreviewVoice(v.id)} className={`p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 ${isPreviewingVoice === v.id ? 'animate-pulse text-indigo-500' : ''}`}><Play className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-8 border-t dark:border-slate-800">
+                <button onClick={handleClearChat} className="w-full flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl font-bold"><Trash2 className="w-5 h-5" />Chatverlauf leeren</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <header className="px-6 py-4 flex items-center justify-between border-b dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">{isLogoLoading ? <Loader2 className="w-5 h-5 animate-spin text-indigo-500" /> : appLogoUrl ? <img src={appLogoUrl} alt="Logo" className="w-full h-full object-cover" /> : <Brain className="w-6 h-6 text-indigo-500" />}</div>
-          <h1 className="font-black text-xl tracking-tighter">NoteHub</h1>
+          <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">{isLogoLoading ? <Loader2 className="w-4 h-4 animate-spin text-indigo-500" /> : appLogoUrl ? <img src={appLogoUrl} alt="Logo" className="w-full h-full object-cover" /> : <Brain className="w-5 h-5 text-indigo-500" />}</div>
+          <h1 className="font-black text-lg tracking-tighter">NoteHub</h1>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">{isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}</button>
-          <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><Settings className="w-5 h-5" /></button>
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">{isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}</button>
+          <button onClick={() => setIsPanelOpen('voice')} className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-500"><Mic className="w-5 h-5" /></button>
+          <button onClick={() => setIsPanelOpen('settings')} className="p-2 rounded-xl bg-slate-100 dark:bg-slate-800"><Settings className="w-5 h-5" /></button>
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        <section className={`flex-1 flex flex-col overflow-y-auto p-4 gap-6 custom-scrollbar ${showPlan ? 'block' : 'hidden md:flex md:w-2/5'}`}>
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+        <section className={`flex-1 flex flex-col overflow-y-auto p-6 gap-6 custom-scrollbar ${showPlan ? 'block' : 'hidden md:flex md:w-[38%]'}`}>
           <div className="flex items-center justify-between">
-            <h2 className="text-2xl font-black">Dein Plan</h2>
+            <h2 className="text-xl font-black">Dein Plan</h2>
             <div className="flex items-center gap-2">
-              <button onClick={handleExportCSV} className="p-2.5 bg-white dark:bg-slate-800 text-slate-500 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:scale-105 transition-all" title="CSV exportieren"><Download className="w-5 h-5" /></button>
-              <button onClick={handlePlayBriefing} disabled={isBriefingLoading} className="p-2.5 bg-white dark:bg-slate-800 text-indigo-500 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:scale-105 transition-all disabled:opacity-50" title="Tages-Briefing">{isBriefingLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Volume2 className="w-5 h-5" />}</button>
-              <button onClick={() => setTasks([...tasks, { id: Math.random().toString(36).substr(2, 9), title: 'Neue Aufgabe', completed: false, priority: 'medium', category: 'Allgemein' }])} className="p-2.5 bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20 hover:bg-indigo-600 transition-all"><Plus className="w-5 h-5" /></button>
+              <button onClick={handleExportCSV} className="p-2 bg-white dark:bg-slate-800 text-slate-500 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm"><Download className="w-4 h-4" /></button>
+              <button onClick={handlePlayBriefing} disabled={isBriefingLoading} className="p-2 bg-white dark:bg-slate-800 text-indigo-500 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">{isBriefingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />}</button>
+              <button onClick={() => setTasks([...tasks, { id: Math.random().toString(36).substr(2, 9), title: 'Neue Aufgabe', completed: false, priority: 'medium', category: 'Allgemein' }])} className="p-2 bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20"><Plus className="w-4 h-4" /></button>
             </div>
           </div>
           <MoodTracker currentMood={userStats.mood} onMoodSelect={(m) => setUserStats({ ...userStats, mood: m })} />
-          <div className="space-y-4">
+          <div className="space-y-3 pb-20">
             {tasks.map(task => (<TaskItem key={task.id} task={task} onToggle={(id) => setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t))} onDelete={(id) => setTasks(tasks.filter(t => t.id !== id))} onUpdate={(id, updates) => setTasks(tasks.map(t => t.id === id ? { ...t, ...updates } : t))} onToggleImportant={(id) => setTasks(tasks.map(t => t.id === id ? { ...t, isImportant: !t.isImportant } : t))} />))}
-          </div>
-          <div className="mt-auto pt-6 border-t dark:border-slate-800">
-             <div className="bg-indigo-50/30 dark:bg-indigo-900/10 p-6 rounded-[2.5rem] border border-indigo-100 dark:border-indigo-800">
-                <VoiceAssistant tasks={tasks} onAddTask={(t) => setTasks(prev => [...prev, t])} onDeleteTask={(id) => setTasks(prev => prev.filter(x => x.id !== id))} onUpdateTask={(id, updates) => setTasks(prev => prev.map(x => x.id === id ? { ...x, ...updates } : x))} onPlayBriefing={handlePlayBriefing} selectedVoice={selectedVoice} />
-             </div>
           </div>
         </section>
 
-        <section className="flex-1 border-l dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full relative">
-          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+        <section className="flex-1 border-l dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full relative overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar pb-32">
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-4 rounded-[2rem] relative group ${msg.role === 'user' ? 'bg-indigo-500 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
+                <div className={`max-w-[85%] p-4 rounded-[1.8rem] relative group ${msg.role === 'user' ? 'bg-indigo-500 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
                   {msg.image && <img src={msg.image} className="w-full rounded-2xl mb-2" alt="Anhang" />}
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
-                  
                   {msg.role === 'model' && (
-                    <button 
-                      onClick={() => handlePlayMessage(msg.text)}
-                      className="absolute -right-10 bottom-0 p-2 text-slate-300 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100"
-                      title="Antwort vorlesen"
-                    >
-                      <Volume2 className="w-4 h-4" />
-                    </button>
+                    <button onClick={() => handlePlayMessage(msg.text)} className="absolute -right-9 bottom-0 p-2 text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100"><Volume2 className="w-4 h-4" /></button>
                   )}
                 </div>
               </div>
@@ -466,51 +449,27 @@ const App: React.FC = () => {
             <div ref={messagesEndRef} />
           </div>
 
-          <ThoughtVisualizer active={isLoading} profile={userProfile} tasksCount={tasks.length} />
+          <ThoughtVisualizer active={isLoading} profile={userProfile} />
 
-          <div className="p-4 bg-white dark:bg-slate-900 border-t dark:border-slate-800">
-            <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-[2rem] border border-transparent focus-within:border-indigo-500/30 transition-all">
-              <button type="button" onClick={() => recognitionRef.current?.start()} className={`p-3 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:text-indigo-500'}`}><Mic className="w-5 h-5" /></button>
-              <input value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Frag NoteHub oder sag 'Plan mir den Tag'..." className="flex-1 bg-transparent border-none outline-none text-sm dark:text-white px-2" />
-              <button type="submit" disabled={isLoading} className="p-3 bg-indigo-500 text-white rounded-full hover:bg-indigo-600 transition-all disabled:opacity-50">{isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}</button>
+          <div className="p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t dark:border-slate-800 absolute bottom-0 inset-x-0">
+            <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-full border border-transparent focus-within:border-indigo-500/30">
+              <button type="button" onClick={() => recognitionRef.current?.start()} className={`p-2.5 rounded-full ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400'}`}><Mic className="w-5 h-5" /></button>
+              <input value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Frag NoteHub..." className="flex-1 bg-transparent border-none outline-none text-sm px-2" />
+              <button type="submit" disabled={isLoading} className="p-2.5 bg-indigo-500 text-white rounded-full disabled:opacity-50">{isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}</button>
             </form>
           </div>
         </section>
       </main>
 
-      {isSettingsOpen && (
-        <div className="fixed inset-0 z-[250] bg-black/40 backdrop-blur-sm flex items-center justify-center p-6">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] p-8 space-y-8 shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between shrink-0">
-              <h2 className="text-xl font-bold dark:text-white">Einstellungen</h2>
-              <button onClick={() => setIsSettingsOpen(false)}><X className="w-6 h-6 text-slate-400" /></button>
-            </div>
-            <div className="space-y-8 overflow-y-auto custom-scrollbar px-1">
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-2"><User className="w-4 h-4 text-indigo-500" /><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Profil</h3></div>
-                <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nutzername</label><input type="text" value={userProfile.name} onChange={(e) => setUserProfile(p => ({ ...p, name: e.target.value }))} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl outline-none focus:ring-2 ring-indigo-500/20" placeholder="Dein Name" /></div>
-              </div>
-              <div className="space-y-4">
-                 <div className="flex items-center gap-2 mb-2"><Volume2 className="w-4 h-4 text-indigo-500" /><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Stimme wählen</h3></div>
-                <div className="grid grid-cols-1 gap-2">
-                  {VOICES.map(v => (
-                    <div key={v.id} className="flex items-center gap-2">
-                      <button onClick={() => setSelectedVoice(v.id)} className={`flex-1 p-3 rounded-xl border-2 transition-all text-xs font-bold text-left flex items-center justify-between ${selectedVoice === v.id ? 'border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30' : 'border-slate-100 dark:border-slate-800 text-slate-400'}`}><span>{v.name} ({v.label})</span>{selectedVoice === v.id && <Check className="w-4 h-4" />}</button>
-                      <button onClick={() => handlePreviewVoice(v.id)} className={`p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-indigo-500 transition-colors ${isPreviewingVoice === v.id ? 'animate-pulse text-indigo-500' : ''}`} title="Vorschau anhören">{isPreviewingVoice === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}</button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div className="space-y-4">
-                <div className="flex items-center gap-2 mb-2"><Sparkles className="w-4 h-4 text-indigo-500" /><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Live-Unterhaltung</h3></div>
-                <button onClick={() => { setShowVoiceOverlay(true); setIsSettingsOpen(false); }} className="w-full flex items-center justify-between p-4 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all active:scale-[0.98]"><div className="flex items-center gap-3"><Headphones className="w-5 h-5" /><span className="font-bold">Live Voice starten</span></div><ChevronDown className="w-5 h-5 -rotate-90 opacity-50" /></button>
-              </div>
-              <div className="space-y-4 pt-4 border-t dark:border-slate-800">
-                <div className="flex items-center gap-2 mb-2"><Trash2 className="w-4 h-4 text-red-500" /><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Datenverwaltung</h3></div>
-                <button onClick={handleClearChat} className="w-full flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl font-bold hover:bg-red-100 transition-all active:scale-[0.98]"><Trash2 className="w-5 h-5" />Chatverlauf leeren</button>
-              </div>
-            </div>
-            <button onClick={() => setIsSettingsOpen(false)} className="w-full bg-slate-800 dark:bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg mt-8 shrink-0">Fertig</button>
+      {/* Persistent Notification Overlay (Only for reminders) */}
+      {activeNotification && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setActiveNotification(null)} />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-xs rounded-[2.5rem] p-8 shadow-2xl border dark:border-slate-800 text-center flex flex-col items-center">
+            <Bell className="w-10 h-10 text-indigo-500 mb-6" />
+            <h3 className="text-xl font-black mb-1">{activeNotification.title}</h3>
+            <p className="text-xs text-slate-400 mb-8">Erinnerung für {activeNotification.reminderAt}</p>
+            <button onClick={() => { setTasks(tasks.map(t => t.id === activeNotification.id ? { ...t, completed: true } : t)); setActiveNotification(null); }} className="w-full py-3.5 bg-indigo-600 text-white rounded-2xl font-bold">Erledigt</button>
           </div>
         </div>
       )}
