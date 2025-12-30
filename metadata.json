@@ -1,0 +1,8 @@
+{
+  "name": "NoteHub",
+  "description": "Ein intelligenter Begleiter für Ihre tägliche Planung mit KI-Zusammenfassungen, Aufgaben-Strukturierung und einem persönlichen Voice-Briefing.",
+  "requestFramePermissions": [
+    "microphone",
+    "camera"
+  ]
+}
