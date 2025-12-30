@@ -42,7 +42,9 @@ import {
   Pause,
   Square,
   ChevronRight,
-  UserCircle
+  UserCircle,
+  FileText,
+  ListTodo
 } from 'lucide-react';
 
 const INITIAL_MESSAGE: Message = { 
@@ -63,7 +65,7 @@ const VOICES = [
 const ThoughtVisualizer: React.FC<{ active: boolean; profile: UserProfile }> = ({ active, profile }) => {
   if (!active) return null;
   return (
-    <div className="absolute bottom-20 left-6 right-6 z-30 animate-in fade-in slide-in-from-bottom-2 duration-300">
+    <div className="absolute bottom-24 left-6 right-6 z-30 animate-in fade-in slide-in-from-bottom-2 duration-300 md:bottom-20">
       <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-indigo-500/30 rounded-2xl py-2 px-4 shadow-xl flex items-center gap-3">
         <div className="flex gap-1">
           {[1, 2, 3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.1}s` }} />)}
@@ -102,7 +104,7 @@ const App: React.FC = () => {
   const [isBriefingLoading, setIsBriefingLoading] = useState(false);
   const [isLogoLoading, setIsLogoLoading] = useState(false);
   const [appLogoUrl, setAppLogoUrl] = useState<string | null>(null);
-  const [showPlan, setShowPlan] = useState(tasks.length > 0);
+  const [activeTab, setActiveTab] = useState<'plan' | 'chat'>('plan');
   const [isPanelOpen, setIsPanelOpen] = useState<'none' | 'settings' | 'voice'>('none');
   const [isListening, setIsListening] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState(() => localStorage.getItem('minicoach_voice') || 'Kore');
@@ -240,6 +242,45 @@ const App: React.FC = () => {
     document.body.removeChild(link);
   };
 
+  const handleExportTXT = () => {
+    if (tasks.length === 0) {
+      alert("Es gibt keine Aufgaben zum Exportieren.");
+      return;
+    }
+    const dateStr = new Date().toLocaleDateString('de-DE');
+    let txtContent = `NoteHub - Aufgabenliste vom ${dateStr}\n`;
+    txtContent += "=".repeat(txtContent.length) + "\n\n";
+
+    const openTasks = tasks.filter(t => !t.completed);
+    const completedTasks = tasks.filter(t => t.completed);
+
+    if (openTasks.length > 0) {
+      txtContent += "OFFENE AUFGABEN:\n";
+      openTasks.forEach(t => {
+        const priority = t.priority === 'high' ? '!!!' : t.priority === 'medium' ? '??' : '.';
+        txtContent += `- [ ] ${t.title} (Prio: ${priority}${t.time ? `, Zeit: ${t.time}` : ''}${t.isImportant ? ', WICHTIG' : ''})\n`;
+      });
+      txtContent += "\n";
+    }
+
+    if (completedTasks.length > 0) {
+      txtContent += "ERLEDIGTE AUFGABEN:\n";
+      completedTasks.forEach(t => {
+        txtContent += `- [x] ${t.title}\n`;
+      });
+    }
+
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `NoteHub_Aufgaben_${new Date().toISOString().split('T')[0]}.txt`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const playAudio = async (audioBase64: string, label: string) => {
     handleStopPlayback();
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
@@ -318,7 +359,8 @@ const App: React.FC = () => {
           const planData = JSON.parse(parts[1].trim());
           setDayPlan(planData);
           setTasks(planData.tasks);
-          setShowPlan(true);
+          // On mobile, switch to plan tab if tasks are updated
+          if (window.innerWidth < 768) setActiveTab('plan');
         } catch (err) { console.error("JSON parse failed", err); }
       }
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: cleanText, timestamp: new Date() }]);
@@ -326,12 +368,14 @@ const App: React.FC = () => {
     finally { setIsLoading(false); }
   };
 
+  const openTasksCount = tasks.filter(t => !t.completed).length;
+
   return (
     <div className={`h-screen flex flex-col overflow-hidden ${isDarkMode ? 'dark bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
       
-      {/* Audio Playback Controls Overlay - DOCKED TO BOTTOM */}
+      {/* Audio Playback Controls Overlay - DOCKED ABOVE BOTTOM NAV ON MOBILE */}
       {playbackState !== 'idle' && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-sm animate-in slide-in-from-bottom-4 fade-in duration-500">
+        <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-sm animate-in slide-in-from-bottom-4 fade-in duration-500 md:bottom-6`}>
           <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-indigo-500/30 p-3 rounded-[2rem] shadow-2xl flex items-center gap-4">
             <div className="w-10 h-10 rounded-xl bg-indigo-500 flex items-center justify-center shrink-0">
                <Volume2 className={`w-5 h-5 text-white ${playbackState === 'playing' ? 'animate-pulse' : ''}`} />
@@ -357,7 +401,6 @@ const App: React.FC = () => {
         fixed inset-y-0 right-0 z-[200] w-full max-w-md transition-transform duration-500 ease-out
         ${isPanelOpen !== 'none' ? 'translate-x-0' : 'translate-x-full'}
       `}>
-        {/* Panel Backdrop - semi-transparent to keep "setup" visible */}
         <div className={`absolute inset-0 bg-slate-950/20 backdrop-blur-sm transition-opacity duration-500 ${isPanelOpen !== 'none' ? 'opacity-100' : 'opacity-0'}`} onClick={() => setIsPanelOpen('none')} />
         
         <div className="relative h-full bg-white dark:bg-slate-900 border-l dark:border-slate-800 shadow-2xl flex flex-col p-8 overflow-y-auto custom-scrollbar">
@@ -418,7 +461,7 @@ const App: React.FC = () => {
         </div>
       </div>
 
-      <header className="px-6 py-4 flex items-center justify-between border-b dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0">
+      <header className="px-6 py-4 flex items-center justify-between border-b dark:border-slate-800 bg-white dark:bg-slate-900 shrink-0 z-10">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">{isLogoLoading ? <Loader2 className="w-4 h-4 animate-spin text-indigo-500" /> : appLogoUrl ? <img src={appLogoUrl} alt="Logo" className="w-full h-full object-cover" /> : <Brain className="w-5 h-5 text-indigo-500" />}</div>
           <h1 className="font-black text-lg tracking-tighter">NoteHub</h1>
@@ -430,14 +473,19 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        <section className={`flex-1 flex flex-col overflow-y-auto p-6 gap-6 custom-scrollbar ${showPlan ? 'block' : 'hidden md:flex md:w-[38%]'}`}>
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative pb-20 md:pb-0">
+        {/* TASK SECTION (PLAN) */}
+        <section className={`
+          flex-1 flex flex-col overflow-y-auto p-6 gap-6 custom-scrollbar
+          ${activeTab === 'plan' ? 'flex' : 'hidden md:flex'}
+          md:w-[40%] lg:w-[35%] xl:w-[30%] md:max-w-md md:border-r md:dark:border-slate-800 md:bg-slate-50/30 md:dark:bg-slate-950/30
+        `}>
           <div className="flex items-center justify-between">
             <h2 className="text-xl font-black">Dein Plan</h2>
             <div className="flex items-center gap-2 relative" ref={voicePickerRef}>
-              <button onClick={handleExportCSV} className="p-2 bg-white dark:bg-slate-800 text-slate-500 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm"><Download className="w-4 h-4" /></button>
+              <button onClick={handleExportCSV} className="p-2 bg-white dark:bg-slate-800 text-slate-500 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm hover:text-indigo-500 transition-colors" title="Export als CSV"><Download className="w-4 h-4" /></button>
+              <button onClick={handleExportTXT} className="p-2 bg-white dark:bg-slate-800 text-slate-500 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm hover:text-indigo-500 transition-colors" title="Export als Textdatei"><FileText className="w-4 h-4" /></button>
               
-              {/* Voice Picker Dropdown */}
               <div className="relative">
                 <button onClick={() => setShowVoicePicker(!showVoicePicker)} className="p-2 bg-white dark:bg-slate-800 text-indigo-500 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm hover:scale-105 transition-transform">
                   <UserCircle className="w-4 h-4" />
@@ -468,20 +516,31 @@ const App: React.FC = () => {
             </div>
           </div>
           <MoodTracker currentMood={userStats.mood} onMoodSelect={(m) => setUserStats({ ...userStats, mood: m })} />
-          <div className="space-y-3 pb-20">
+          <div className="space-y-3 pb-24">
             {tasks.map(task => (<TaskItem key={task.id} task={task} onToggle={(id) => setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t))} onDelete={(id) => setTasks(tasks.filter(t => t.id !== id))} onUpdate={(id, updates) => setTasks(tasks.map(t => t.id === id ? { ...t, ...updates } : t))} onToggleImportant={(id) => setTasks(tasks.map(t => t.id === id ? { ...t, isImportant: !t.isImportant } : t))} />))}
+            {tasks.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 opacity-30 text-center">
+                 <ListTodo className="w-12 h-12 mb-4" />
+                 <p className="text-sm font-bold">Noch keine Aufgaben</p>
+                 <p className="text-[10px] uppercase tracking-widest mt-1">Chatte mit NoteHub zum Planen</p>
+              </div>
+            )}
           </div>
         </section>
 
-        <section className="flex-1 border-l dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full relative overflow-hidden">
+        {/* CHAT SECTION */}
+        <section className={`
+          flex-1 border-l dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full relative overflow-hidden
+          ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}
+        `}>
           <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar pb-32">
             {messages.map(msg => (
               <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[85%] p-4 rounded-[1.8rem] relative group ${msg.role === 'user' ? 'bg-indigo-500 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
+                <div className={`max-w-[85%] p-4 rounded-[1.8rem] relative group ${msg.role === 'user' ? 'bg-indigo-500 text-white rounded-tr-none shadow-md shadow-indigo-500/10' : 'bg-slate-100 dark:bg-slate-800 dark:text-slate-100 rounded-tl-none shadow-sm'}`}>
                   {msg.image && <img src={msg.image} className="w-full rounded-2xl mb-2" alt="Anhang" />}
                   <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                   {msg.role === 'model' && (
-                    <button onClick={() => handlePlayMessage(msg.text)} className="absolute -right-9 bottom-0 p-2 text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100"><Volume2 className="w-4 h-4" /></button>
+                    <button onClick={() => handlePlayMessage(msg.text)} className="absolute -right-9 bottom-0 p-2 text-slate-300 hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity"><Volume2 className="w-4 h-4" /></button>
                   )}
                 </div>
               </div>
@@ -491,14 +550,40 @@ const App: React.FC = () => {
 
           <ThoughtVisualizer active={isLoading} profile={userProfile} />
 
-          <div className="p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t dark:border-slate-800 absolute bottom-0 inset-x-0">
-            <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-full border border-transparent focus-within:border-indigo-500/30">
-              <button type="button" onClick={() => recognitionRef.current?.start()} className={`p-2.5 rounded-full ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400'}`}><Mic className="w-5 h-5" /></button>
-              <input value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Frag NoteHub..." className="flex-1 bg-transparent border-none outline-none text-sm px-2" />
-              <button type="submit" disabled={isLoading} className="p-2.5 bg-indigo-500 text-white rounded-full disabled:opacity-50">{isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}</button>
+          <div className="p-4 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-t dark:border-slate-800 absolute bottom-0 inset-x-0 pb-6 md:pb-4">
+            <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-1.5 rounded-full border border-transparent focus-within:border-indigo-500/30 transition-all shadow-inner">
+              <button type="button" onClick={() => recognitionRef.current?.start()} className={`p-2.5 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:text-indigo-500'}`}><Mic className="w-5 h-5" /></button>
+              <input value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Frag NoteHub..." className="flex-1 bg-transparent border-none outline-none text-sm px-2 py-2" />
+              <button type="submit" disabled={isLoading} className="p-2.5 bg-indigo-500 text-white rounded-full disabled:opacity-50 hover:bg-indigo-600 transition-colors shadow-lg shadow-indigo-500/20">{isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}</button>
             </form>
           </div>
         </section>
+
+        {/* MOBILE BOTTOM NAVIGATION */}
+        <nav className="fixed bottom-0 inset-x-0 h-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t dark:border-slate-800 flex items-center justify-around md:hidden z-50 px-6">
+          <button 
+            onClick={() => setActiveTab('plan')} 
+            className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'plan' ? 'text-indigo-500 scale-110' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}
+          >
+            <div className="relative">
+              <ListTodo className="w-6 h-6" />
+              {openTasksCount > 0 && activeTab !== 'plan' && (
+                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-[10px] text-white font-black rounded-full flex items-center justify-center animate-bounce">
+                  {openTasksCount}
+                </span>
+              )}
+            </div>
+            <span className="text-[9px] font-black uppercase tracking-widest">Plan</span>
+          </button>
+          
+          <button 
+            onClick={() => setActiveTab('chat')} 
+            className={`flex flex-col items-center gap-1 transition-all ${activeTab === 'chat' ? 'text-indigo-500 scale-110' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200'}`}
+          >
+            <MessageSquare className="w-6 h-6" />
+            <span className="text-[9px] font-black uppercase tracking-widest">Chat</span>
+          </button>
+        </nav>
       </main>
 
       {/* Persistent Notification Overlay (Only for reminders) */}
