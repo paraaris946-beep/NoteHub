@@ -27,6 +27,7 @@ interface TaskItemProps {
 const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, onDelete, onUpdate }) => {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [showReminderPicker, setShowReminderPicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -56,15 +57,28 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
     }
   };
 
-  const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReminderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (onUpdate) {
       onUpdate(task.id, { reminderAt: e.target.value });
+    }
+  };
+
+  const handlePlannedTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (onUpdate) {
+      onUpdate(task.id, { time: e.target.value });
     }
   };
 
   const removeReminder = () => {
     if (onUpdate) {
       onUpdate(task.id, { reminderAt: undefined });
+      setShowReminderPicker(false);
+    }
+  };
+
+  const removePlannedTime = () => {
+    if (onUpdate) {
+      onUpdate(task.id, { time: undefined });
       setShowTimePicker(false);
     }
   };
@@ -92,7 +106,7 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
               </div>
               <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                 {task.time && (
-                  <span className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-tighter">
+                  <span className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-tighter bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg">
                     <Clock className="w-3 h-3" /> {task.time}
                   </span>
                 )}
@@ -137,8 +151,16 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
             {!task.completed && (
               <>
                 <button 
-                  onClick={() => setShowTimePicker(!showTimePicker)}
-                  className={`p-2 rounded-xl transition-all ${task.reminderAt || showTimePicker ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-200 dark:text-slate-800 hover:text-indigo-400'}`}
+                  onClick={() => { setShowTimePicker(!showTimePicker); setShowReminderPicker(false); }}
+                  className={`p-2 rounded-xl transition-all ${task.time || showTimePicker ? 'text-slate-600 bg-slate-100 dark:bg-slate-800 dark:text-slate-300' : 'text-slate-200 dark:text-slate-800 hover:text-slate-400'}`}
+                  title="Uhrzeit festlegen"
+                >
+                  <Clock className="w-4 h-4" />
+                </button>
+
+                <button 
+                  onClick={() => { setShowReminderPicker(!showReminderPicker); setShowTimePicker(false); }}
+                  className={`p-2 rounded-xl transition-all ${task.reminderAt || showReminderPicker ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-900/30' : 'text-slate-200 dark:text-slate-800 hover:text-indigo-400'}`}
                   title="Erinnerung einstellen"
                 >
                   <Bell className="w-4 h-4" />
@@ -170,15 +192,48 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
           </div>
         </div>
 
+        {/* Zeit-Picker für Geplante Zeit (task.time) */}
         {showTimePicker && !task.completed && (
-          <div className="mt-4 flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl animate-in slide-in-from-top-2 duration-200">
+          <div className="mt-4 flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-2xl animate-in slide-in-from-top-2 duration-200 border border-slate-100 dark:border-slate-800">
             <div className="flex flex-col gap-1 flex-1">
-              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-1">Erinnerungszeit</label>
+              <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest px-1">Geplante Zeit</label>
+              <input 
+                type="text" 
+                value={task.time || ""} 
+                onChange={handlePlannedTimeChange}
+                placeholder="z.B. 14:00 oder Vormittag"
+                className="bg-white dark:bg-slate-900 text-xs font-bold p-2 rounded-xl border border-slate-100 dark:border-slate-800 outline-none focus:border-slate-500/30 transition-all dark:text-white"
+              />
+            </div>
+            <div className="flex gap-1 items-end">
+              <button 
+                onClick={removePlannedTime}
+                className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                title="Zeit entfernen"
+              >
+                <Clock className="w-4 h-4 opacity-50" />
+              </button>
+              <button 
+                onClick={() => setShowTimePicker(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 transition-colors"
+                title="Schließen"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Zeit-Picker für Erinnerung (task.reminderAt) */}
+        {showReminderPicker && !task.completed && (
+          <div className="mt-4 flex items-center gap-3 p-3 bg-indigo-50/30 dark:bg-indigo-900/10 rounded-2xl animate-in slide-in-from-top-2 duration-200 border border-indigo-100/50 dark:border-indigo-800/50">
+            <div className="flex flex-col gap-1 flex-1">
+              <label className="text-[8px] font-black text-indigo-400 uppercase tracking-widest px-1">Erinnerungszeit</label>
               <input 
                 type="time" 
                 value={task.reminderAt || ""} 
-                onChange={handleTimeChange}
-                className="bg-white dark:bg-slate-900 text-xs font-bold p-2 rounded-xl border border-slate-100 dark:border-slate-800 outline-none focus:border-indigo-500/30 transition-all dark:text-white"
+                onChange={handleReminderChange}
+                className="bg-white dark:bg-slate-900 text-xs font-bold p-2 rounded-xl border border-indigo-100/30 dark:border-indigo-800 outline-none focus:border-indigo-500/30 transition-all dark:text-white"
               />
             </div>
             <div className="flex gap-1 items-end">
@@ -190,7 +245,7 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
                 <BellOff className="w-4 h-4" />
               </button>
               <button 
-                onClick={() => setShowTimePicker(false)}
+                onClick={() => setShowReminderPicker(false)}
                 className="p-2 text-slate-400 hover:text-indigo-500 transition-colors"
                 title="Schließen"
               >

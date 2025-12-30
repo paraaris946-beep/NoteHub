@@ -10,6 +10,7 @@ import {
   decodeBase64, 
   decodeAudioData 
 } from './services/geminiService';
+import { playNotificationSound } from './services/audioService';
 import TaskItem from './components/TaskItem';
 import VoiceAssistant from './components/VoiceAssistant';
 import MoodTracker from './components/MoodTracker';
@@ -39,7 +40,8 @@ import {
   Calendar,
   IdCard,
   Zap,
-  Brain
+  Brain,
+  Bell
 } from 'lucide-react';
 
 const INITIAL_MESSAGE: Message = { 
@@ -117,13 +119,10 @@ const App: React.FC = () => {
 
   const [userInput, setUserInput] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [isListening, setIsListening] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isBriefingLoading, setIsBriefingLoading] = useState(false);
   const [isLogoLoading, setIsLogoLoading] = useState(false);
   const [appLogoUrl, setAppLogoUrl] = useState<string | null>(null);
-  const [currentTime, setCurrentTime] = useState(new Date());
   const [showPlan, setShowPlan] = useState(tasks.length > 0 || !!dayPlan);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState(() => localStorage.getItem('minicoach_voice') || 'Kore');
@@ -131,10 +130,13 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('minicoach_theme');
     return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
+  
+  // Reminder State
+  const [activeNotification, setActiveNotification] = useState<Task | null>(null);
+  const triggeredRemindersRef = useRef<Set<string>>(new Set());
 
   const chatRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
 
@@ -160,11 +162,39 @@ const App: React.FC = () => {
       recognitionRef.current.onresult = (e: any) => {
         const transcript = e.results[0][0].transcript;
         setUserInput(prev => (prev.trim() ? prev.trim() + ' ' : '') + transcript);
-        setIsListening(false);
       };
-      recognitionRef.current.onend = () => setIsListening(false);
     }
   }, []);
+
+  // Reminder Monitoring Loop
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = new Date();
+      const currentH = now.getHours().toString().padStart(2, '0');
+      const currentM = now.getMinutes().toString().padStart(2, '0');
+      const timeStr = `${currentH}:${currentM}`;
+
+      tasks.forEach(task => {
+        if (task.reminderAt === timeStr && !task.completed) {
+          const reminderKey = `${task.id}-${timeStr}`;
+          if (!triggeredRemindersRef.current.has(reminderKey)) {
+            triggeredRemindersRef.current.add(reminderKey);
+            triggerReminder(task);
+          }
+        }
+      });
+      
+      // Clear triggered list on date change or occasionally?
+      // For now, it stays for the session.
+    }, 30000); // Check every 30s
+    return () => clearInterval(interval);
+  }, [tasks]);
+
+  const triggerReminder = (task: Task) => {
+    playNotificationSound('Chime');
+    setActiveNotification(task);
+    setTimeout(() => setActiveNotification(null), 8000);
+  };
 
   useEffect(() => {
     if (isDarkMode) document.documentElement.classList.add('dark');
@@ -264,6 +294,25 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col h-screen overflow-hidden">
+      {/* Reminder Notification Signal */}
+      {activeNotification && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-sm animate-in fade-in slide-in-from-top-8 duration-500">
+          <div className="bg-indigo-600 dark:bg-indigo-500 text-white p-5 rounded-[2.5rem] shadow-2xl shadow-indigo-500/40 flex items-center gap-4 relative overflow-hidden group">
+            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-white/0 via-white/10 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+              <Bell className="w-6 h-6 animate-bounce" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Erinnerung</p>
+              <p className="font-bold text-sm truncate">{activeNotification.title}</p>
+            </div>
+            <button onClick={() => setActiveNotification(null)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
       <header className="flex-none bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b dark:border-slate-800 px-6 py-4 flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-sm bg-slate-100 flex items-center justify-center">
