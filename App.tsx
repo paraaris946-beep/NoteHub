@@ -32,7 +32,15 @@ import {
   Bell,
   Check,
   Play,
-  MessageSquare
+  MessageSquare,
+  Mic,
+  Headphones,
+  Trash2,
+  Sparkles,
+  Volume1,
+  Download,
+  Pause,
+  Square
 } from 'lucide-react';
 
 const INITIAL_MESSAGE: Message = { 
@@ -43,10 +51,11 @@ const INITIAL_MESSAGE: Message = {
 };
 
 const VOICES = [
-  { id: 'Kore', name: 'Kore', label: 'Standard (Männlich)' },
-  { id: 'Puck', name: 'Puck', label: 'Freundlich (Weiblich)' },
-  { id: 'Zephyr', name: 'Zephyr', label: 'Ruhig (Neutral)' },
-  { id: 'Charon', name: 'Charon', label: 'Tief (Männlich)' },
+  { id: 'Kore', name: 'Kore', label: 'Männlich' },
+  { id: 'Puck', name: 'Puck', label: 'Weiblich' },
+  { id: 'Zephyr', name: 'Zephyr', label: 'Neutral' },
+  { id: 'Charon', name: 'Charon', label: 'Tief' },
+  { id: 'Fenrir', name: 'Fenrir', label: 'Rauh' },
 ];
 
 const ThoughtVisualizer: React.FC<{ active: boolean; profile: UserProfile; tasksCount: number }> = ({ active, profile, tasksCount }) => {
@@ -96,7 +105,6 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('notehub_stats');
     return saved ? JSON.parse(saved) : { completedTasks: 0, totalTasks: 0, mood: '', waterIntake: 0 };
   });
-  const [focusImageUrl, setFocusImageUrl] = useState<string | null>(() => localStorage.getItem('minicoach_focus_img'));
   const [userProfile, setUserProfile] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('notehub_profile');
     return saved ? JSON.parse(saved) : { name: '', birthDate: '' };
@@ -110,13 +118,21 @@ const App: React.FC = () => {
   const [appLogoUrl, setAppLogoUrl] = useState<string | null>(null);
   const [showPlan, setShowPlan] = useState(tasks.length > 0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [showVoiceOverlay, setShowVoiceOverlay] = useState(false);
   const [selectedVoice, setSelectedVoice] = useState(() => localStorage.getItem('minicoach_voice') || 'Kore');
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('minicoach_theme');
     return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
-  const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
+  const [isPreviewingVoice, setIsPreviewingVoice] = useState<string | null>(null);
   
+  // Audio Playback State
+  const [playbackState, setPlaybackState] = useState<'idle' | 'playing' | 'paused'>('idle');
+  const [playbackLabel, setPlaybackLabel] = useState<string>('');
+  const playbackCtxRef = useRef<AudioContext | null>(null);
+  const playbackSourceRef = useRef<AudioBufferSourceNode | null>(null);
+
   const [activeNotification, setActiveNotification] = useState<Task | null>(null);
   const triggeredRemindersRef = useRef<Set<string>>(new Set());
   const tasksRef = useRef<Task[]>(tasks);
@@ -125,7 +141,7 @@ const App: React.FC = () => {
 
   const chatRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => { localStorage.setItem('minicoach_tasks', JSON.stringify(tasks)); }, [tasks]);
   useEffect(() => { localStorage.setItem('minicoach_dayplan', JSON.stringify(dayPlan)); }, [dayPlan]);
@@ -133,13 +149,25 @@ const App: React.FC = () => {
   useEffect(() => { localStorage.setItem('minicoach_voice', selectedVoice); }, [selectedVoice]);
   useEffect(() => { localStorage.setItem('notehub_profile', JSON.stringify(userProfile)); }, [userProfile]);
   useEffect(() => { localStorage.setItem('notehub_stats', JSON.stringify(userStats)); }, [userStats]);
-  useEffect(() => { if (focusImageUrl) localStorage.setItem('minicoach_focus_img', focusImageUrl); }, [focusImageUrl]);
 
   useEffect(() => {
     chatRef.current = startCoachingChat();
     const cachedLogo = localStorage.getItem('minicoach_logo');
     if (cachedLogo) setAppLogoUrl(cachedLogo);
     else handleRegenerateLogo();
+
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.lang = 'de-DE';
+      recognitionRef.current.onstart = () => setIsListening(true);
+      recognitionRef.current.onend = () => setIsListening(false);
+      recognitionRef.current.onresult = (e: any) => {
+        const transcript = e.results[0][0].transcript;
+        setUserInput(prev => (prev.trim() ? prev.trim() + ' ' : '') + transcript);
+      };
+    }
 
     const interval = setInterval(() => {
       const now = new Date();
@@ -179,266 +207,313 @@ const App: React.FC = () => {
   const handleRegenerateLogo = async () => {
     setIsLogoLoading(true);
     try {
-      const url = await generateAppLogo();
-      if (url) { setAppLogoUrl(url); localStorage.setItem('minicoach_logo', url); }
-    } catch (err) { console.error(err); }
-    finally { setIsLogoLoading(false); }
+      const logo = await generateAppLogo();
+      setAppLogoUrl(logo);
+      localStorage.setItem('minicoach_logo', logo);
+    } catch (err) {
+      console.error("Logo regeneration failed", err);
+    } finally {
+      setIsLogoLoading(false);
+    }
   };
 
-  const handleSendMessage = async () => {
-    if ((!userInput.trim() && !selectedImage) || isLoading) return;
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: userInput || "Foto analysieren...", timestamp: new Date(), image: selectedImage || undefined };
+  const handleClearChat = () => {
+    if (window.confirm('Möchtest du wirklich den gesamten Chatverlauf löschen?')) {
+      setMessages([INITIAL_MESSAGE]);
+      setIsSettingsOpen(false);
+    }
+  };
+
+  const handleExportCSV = () => {
+    if (tasks.length === 0) {
+      alert("Es gibt keine Aufgaben zum Exportieren.");
+      return;
+    }
+    const headers = ['ID', 'Titel', 'Zeit', 'Erledigt', 'Prioritaet', 'Kategorie', 'Erinnerung', 'Wichtig'];
+    const rows = tasks.map(t => [t.id, t.title.replace(/"/g, '""'), t.time || '', t.completed ? 'Ja' : 'Nein', t.priority, t.category, t.reminderAt || '', t.isImportant ? 'Ja' : 'Nein']);
+    const csvContent = [headers.join(','), ...rows.map(row => row.map(cell => `"${cell}"`).join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `NoteHub_Plan_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Central Audio Playback Handler
+  const playAudio = async (audioBase64: string, label: string) => {
+    // Stop any existing playback
+    handleStopPlayback();
+
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    playbackCtxRef.current = ctx;
+    
+    try {
+      const buf = await decodeAudioData(decodeBase64(audioBase64), ctx, 24000, 1);
+      const source = ctx.createBufferSource();
+      source.buffer = buf;
+      source.connect(ctx.destination);
+      playbackSourceRef.current = source;
+      
+      source.onended = () => {
+        setPlaybackState('idle');
+        setPlaybackLabel('');
+      };
+
+      setPlaybackLabel(label);
+      setPlaybackState('playing');
+      source.start();
+    } catch (err) {
+      console.error("Playback error", err);
+      setPlaybackState('idle');
+    }
+  };
+
+  const handleTogglePlayback = async () => {
+    if (!playbackCtxRef.current) return;
+    if (playbackState === 'playing') {
+      await playbackCtxRef.current.suspend();
+      setPlaybackState('paused');
+    } else if (playbackState === 'paused') {
+      await playbackCtxRef.current.resume();
+      setPlaybackState('playing');
+    }
+  };
+
+  const handleStopPlayback = () => {
+    if (playbackSourceRef.current) {
+      try { playbackSourceRef.current.stop(); } catch (e) {}
+      playbackSourceRef.current = null;
+    }
+    if (playbackCtxRef.current) {
+      playbackCtxRef.current.close();
+      playbackCtxRef.current = null;
+    }
+    setPlaybackState('idle');
+    setPlaybackLabel('');
+  };
+
+  const handlePlayBriefing = async () => {
+    if (isBriefingLoading) return;
+    setIsBriefingLoading(true);
+    try {
+      const audio = await generateBriefingAudio(tasks, dayPlan?.focus, dayPlan?.motivation, selectedVoice);
+      await playAudio(audio, 'Tages-Briefing');
+    } catch (err) {
+      console.error("Briefing failed", err);
+    } finally {
+      setIsBriefingLoading(false);
+    }
+  };
+
+  const handlePlayMessage = async (text: string) => {
+    try {
+      const audio = await generateMessageAudio(text, selectedVoice);
+      await playAudio(audio, 'Nachricht vorlesen');
+    } catch (err) {
+      console.error("Message audio failed", err);
+    }
+  };
+
+  const handlePreviewVoice = async (voiceId: string) => {
+    if (isPreviewingVoice) return;
+    setIsPreviewingVoice(voiceId);
+    try {
+      const text = `Hallo, ich bin die Stimme ${voiceId}.`;
+      const audio = await generateMessageAudio(text, voiceId);
+      await playAudio(audio, `Vorschau: ${voiceId}`);
+    } catch (err) {
+      console.error("Voice preview failed", err);
+    } finally {
+      setIsPreviewingVoice(null);
+    }
+  };
+
+  const handleSendMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!userInput.trim() && !selectedImage) return;
+
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', text: userInput, timestamp: new Date(), image: selectedImage || undefined };
     setMessages(prev => [...prev, userMsg]);
-    const currentInput = userInput;
-    const currentImage = selectedImage;
     setUserInput('');
     setSelectedImage(null);
     setIsLoading(true);
 
     try {
-      const modelId = Date.now().toString();
-      setMessages(prev => [...prev, { id: modelId, role: 'model', text: "", timestamp: new Date() }]);
-      let responseText = "";
-
-      if (currentImage) {
-        const ai = getGeminiClient();
-        const base64Data = currentImage.split(',')[1];
-        const result = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview',
-          contents: [{ parts: [{ inlineData: { data: base64Data, mimeType: 'image/jpeg' } }, { text: `${currentInput || "Analysiere das Bild."}` }] }],
-        });
-        responseText = result.text || "";
-        updateStreamingMessage(modelId, responseText);
-      } else {
-        const stream = await chatRef.current.sendMessageStream({ message: currentInput });
-        for await (const chunk of stream) { responseText += chunk.text; updateStreamingMessage(modelId, responseText); }
-      }
-
-      // Check if the response contains structured task data
-      if (responseText.includes('[PLAN_JSON]')) {
-        const parts = responseText.split('[PLAN_JSON]');
-        const potentialJson = parts[1]?.trim() || "";
-        const startIndex = potentialJson.indexOf('{');
-        const endIndex = potentialJson.lastIndexOf('}');
-        if (startIndex !== -1 && endIndex !== -1) {
-          const cleanJson = potentialJson.substring(startIndex, endIndex + 1);
-          const planData = JSON.parse(cleanJson);
+      const response = await chatRef.current.sendMessage({ message: userMsg.text });
+      const modelText = response.text;
+      let cleanText = modelText;
+      if (modelText.includes('[PLAN_JSON]')) {
+        const parts = modelText.split('[PLAN_JSON]');
+        cleanText = parts[0].trim();
+        try {
+          const planData = JSON.parse(parts[1].trim());
           setDayPlan(planData);
-          setTasks(planData.tasks.map((t: any) => ({ ...t, completed: false })));
-          setShowPlan(true); // Open the plan view only if tasks were explicitly planned
-          updateStreamingMessage(modelId, parts[0].trim());
-          const img = await generateFocusImage(planData.focus);
-          setFocusImageUrl(img);
-        }
+          setTasks(planData.tasks);
+          setShowPlan(true);
+        } catch (err) { console.error("JSON parse failed", err); }
       }
-    } catch (err) { 
-      console.error(err); 
-      updateStreamingMessage(Date.now().toString(), "Entschuldige, ich konnte keine Verbindung herstellen. Versuche es gleich noch einmal."); 
-    } finally { 
-      setIsLoading(false); 
-    }
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'model', text: cleanText, timestamp: new Date() }]);
+    } catch (err) { console.error("Chat message failed", err); }
+    finally { setIsLoading(false); }
   };
-
-  const updateStreamingMessage = (id: string, text: string) => {
-    setMessages(prev => prev.map(m => m.id === id ? { ...m, text } : m));
-  };
-
-  const speakMessage = async (msg: Message) => {
-    if (currentlyPlayingId === msg.id) return;
-    setCurrentlyPlayingId(msg.id);
-    try {
-      const base64Audio = await generateMessageAudio(msg.text, selectedVoice);
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      if (ctx.state === 'suspended') await ctx.resume();
-      const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), ctx, 24000, 1);
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(ctx.destination);
-      source.onended = () => setCurrentlyPlayingId(null);
-      source.start(0);
-    } catch (err) { console.error(err); setCurrentlyPlayingId(null); }
-  };
-
-  const handlePlayBriefing = async () => {
-    if (tasks.length === 0 || isBriefingLoading) return;
-    setIsBriefingLoading(true);
-    try {
-      const base64Audio = await generateBriefingAudio(tasks, dayPlan?.focus, dayPlan?.motivation, selectedVoice);
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      if (ctx.state === 'suspended') await ctx.resume();
-      const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), ctx, 24000, 1);
-      const source = ctx.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(ctx.destination);
-      source.start(0);
-    } catch (err) { console.error(err); alert("Audio-Fehler: " + err); }
-    finally { setIsBriefingLoading(false); }
-  };
-
-  const handleUpdateMood = (mood: string) => {
-    setUserStats(prev => ({ ...prev, mood }));
-  };
-
-  const addTask = (task: any) => { setTasks(prev => [...prev, task]); setShowPlan(true); };
-  const toggleTask = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !t.completed } : t));
-  const toggleImportant = (id: string) => setTasks(prev => prev.map(t => t.id === id ? { ...t, isImportant: !t.isImportant } : t));
-  const deleteTask = (id: string) => setTasks(prev => prev.filter(t => t.id !== id));
-  const updateTask = (id: string, updates: Partial<Task>) => setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-
-  const progress = useMemo(() => tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100), [tasks]);
 
   return (
-    <div className={`min-h-screen bg-[#FDFDFD] dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col h-screen overflow-hidden transition-all duration-700 ${activeNotification ? 'ring-[12px] ring-inset ring-indigo-500/50' : ''}`}>
+    <div className={`min-h-screen flex flex-col ${isDarkMode ? 'dark bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
       
-      {activeNotification && (
-        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 animate-in fade-in duration-300">
-          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xl" onClick={() => setActiveNotification(null)} />
-          <div className="absolute inset-0 bg-indigo-500/10 animate-pulse pointer-events-none" />
-          <div className="relative bg-white dark:bg-slate-900 w-full max-w-sm rounded-[3rem] p-10 shadow-[0_0_100px_rgba(99,102,241,0.3)] border-2 border-indigo-500/30 text-center animate-in zoom-in-95 duration-500 flex flex-col items-center">
-            <div className="w-24 h-24 bg-indigo-50 dark:bg-indigo-900/30 rounded-[2rem] flex items-center justify-center mb-8 relative">
-              <div className="absolute inset-0 bg-indigo-500/20 rounded-[2rem] animate-ping" />
-              <Bell className="w-10 h-10 text-indigo-500 fill-indigo-500" />
+      {/* Audio Playback Controls Overlay */}
+      {playbackState !== 'idle' && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[150] w-[90%] max-w-sm animate-in slide-in-from-bottom-8 fade-in duration-500">
+          <div className="bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border border-indigo-500/30 p-4 rounded-[2.5rem] shadow-2xl flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-500 flex items-center justify-center relative overflow-hidden shrink-0">
+               <div className="absolute inset-0 opacity-20">
+                  <div className={`w-full h-full bg-gradient-to-t from-white to-transparent ${playbackState === 'playing' ? 'animate-pulse' : ''}`} />
+               </div>
+               {playbackState === 'playing' ? <Volume2 className="w-6 h-6 text-white" /> : <Pause className="w-6 h-6 text-white" />}
             </div>
-            <h2 className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-3">Erinnerungssignal</h2>
-            <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-4 leading-tight">{activeNotification.title}</h3>
-            <p className="text-sm text-slate-400 dark:text-slate-500 mb-10 px-4">Es ist {activeNotification.reminderAt} Uhr. Zeit für deine Aufgabe.</p>
-            <div className="flex flex-col w-full gap-3">
-              <button onClick={() => { toggleTask(activeNotification.id); setActiveNotification(null); }} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2">
-                <Check className="w-5 h-5" /> Erledigt
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest truncate">{playbackLabel}</p>
+              <p className="text-xs font-bold dark:text-slate-200 truncate">{playbackState === 'playing' ? 'Wird abgespielt...' : 'Pausiert'}</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={handleTogglePlayback} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-slate-200 transition-all">
+                {playbackState === 'playing' ? <Pause className="w-5 h-5 text-slate-600 dark:text-slate-300" /> : <Play className="w-5 h-5 text-indigo-500" />}
               </button>
-              <button onClick={() => setActiveNotification(null)} className="w-full py-5 text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-colors">Später</button>
+              <button onClick={handleStopPlayback} className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full hover:bg-red-500 hover:text-white transition-all">
+                <Square className="w-5 h-5" />
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      <header className="flex-none bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b dark:border-slate-800 px-6 py-4 flex items-center justify-between z-10">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl overflow-hidden shadow-sm bg-slate-100 flex items-center justify-center">
-            {isLogoLoading ? <Loader2 className="w-5 h-5 text-indigo-400 animate-spin" /> : (appLogoUrl ? <img src={appLogoUrl} className="w-full h-full object-cover" /> : <Coffee className="w-5 h-5 text-slate-400" />)}
+      {showVoiceOverlay && (
+        <div className="fixed inset-0 z-[200] bg-slate-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 animate-in fade-in zoom-in-95 duration-300">
+          <button onClick={() => setShowVoiceOverlay(false)} className="absolute top-8 right-8 p-4 bg-white/10 hover:bg-white/20 text-white rounded-full transition-all"><X className="w-8 h-8" /></button>
+          <div className="w-full max-w-sm">
+             <VoiceAssistant tasks={tasks} onAddTask={(t) => setTasks(prev => [...prev, t])} onDeleteTask={(id) => setTasks(prev => prev.filter(x => x.id !== id))} onUpdateTask={(id, updates) => setTasks(prev => prev.map(x => x.id === id ? { ...x, ...updates } : x))} onPlayBriefing={handlePlayBriefing} selectedVoice={selectedVoice} />
           </div>
-          <h1 className="font-bold text-lg dark:text-white">NoteHub</h1>
+        </div>
+      )}
+
+      {activeNotification && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xl" onClick={() => setActiveNotification(null)} />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-sm rounded-[3rem] p-10 shadow-2xl border-2 border-indigo-500/30 text-center animate-in zoom-in-95 duration-500 flex flex-col items-center">
+            <Bell className="w-12 h-12 text-indigo-500 mb-6 animate-bounce" />
+            <h3 className="text-2xl font-black mb-2">{activeNotification.title}</h3>
+            <p className="text-sm text-slate-400 mb-8">Erinnerung für {activeNotification.reminderAt} Uhr</p>
+            <button onClick={() => { setTasks(tasks.map(t => t.id === activeNotification.id ? { ...t, completed: true } : t)); setActiveNotification(null); }} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-500/20">Erledigt</button>
+          </div>
+        </div>
+      )}
+
+      <header className="p-4 flex items-center justify-between border-b dark:border-slate-800 bg-white dark:bg-slate-900 sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-800 flex items-center justify-center">{isLogoLoading ? <Loader2 className="w-5 h-5 animate-spin text-indigo-500" /> : appLogoUrl ? <img src={appLogoUrl} alt="Logo" className="w-full h-full object-cover" /> : <Brain className="w-6 h-6 text-indigo-500" />}</div>
+          <h1 className="font-black text-xl tracking-tighter">NoteHub</h1>
         </div>
         <div className="flex items-center gap-2">
-          {!showPlan && tasks.length > 0 && (
-            <button onClick={() => setShowPlan(true)} className="p-2.5 rounded-2xl text-slate-400 hover:text-indigo-500 transition-colors">
-              <LayoutDashboard className="w-5 h-5" />
-            </button>
-          )}
-          <button onClick={handlePlayBriefing} disabled={isBriefingLoading} className={`p-2.5 rounded-2xl ${isBriefingLoading ? 'bg-indigo-50 animate-pulse' : 'text-indigo-600'}`} title="Briefing abspielen"><Volume2 className="w-5 h-5" /></button>
-          <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2.5 rounded-2xl text-slate-400">{isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}</button>
-          <button onClick={() => setIsSettingsOpen(true)} className="p-2.5 rounded-2xl"><Settings className="w-5 h-5 text-slate-300" /></button>
+          <button onClick={() => setIsDarkMode(!isDarkMode)} className="p-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">{isDarkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}</button>
+          <button onClick={() => setIsSettingsOpen(!isSettingsOpen)} className="p-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"><Settings className="w-5 h-5" /></button>
         </div>
       </header>
 
-      {isSettingsOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] p-8 space-y-8 shadow-2xl">
-            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold dark:text-white">Einstellungen</h2>
-              <button onClick={() => setIsSettingsOpen(false)}><X className="w-6 h-6 text-slate-400" /></button>
+      <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
+        <section className={`flex-1 flex flex-col overflow-y-auto p-4 gap-6 custom-scrollbar ${showPlan ? 'block' : 'hidden md:flex md:w-2/5'}`}>
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-black">Dein Plan</h2>
+            <div className="flex items-center gap-2">
+              <button onClick={handleExportCSV} className="p-2.5 bg-white dark:bg-slate-800 text-slate-500 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:scale-105 transition-all" title="CSV exportieren"><Download className="w-5 h-5" /></button>
+              <button onClick={handlePlayBriefing} disabled={isBriefingLoading} className="p-2.5 bg-white dark:bg-slate-800 text-indigo-500 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 hover:scale-105 transition-all disabled:opacity-50" title="Tages-Briefing">{isBriefingLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Volume2 className="w-5 h-5" />}</button>
+              <button onClick={() => setTasks([...tasks, { id: Math.random().toString(36).substr(2, 9), title: 'Neue Aufgabe', completed: false, priority: 'medium', category: 'Allgemein' }])} className="p-2.5 bg-indigo-500 text-white rounded-xl shadow-lg shadow-indigo-500/20 hover:bg-indigo-600 transition-all"><Plus className="w-5 h-5" /></button>
             </div>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase">Nutzername</label>
-                <input type="text" value={userProfile.name} onChange={(e) => setUserProfile(p => ({ ...p, name: e.target.value }))} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl" placeholder="Dein Name" />
-              </div>
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase">Stimme</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {VOICES.map(v => (
-                    <button key={v.id} onClick={() => setSelectedVoice(v.id)} className={`p-3 rounded-xl border-2 transition-all ${selectedVoice === v.id ? 'border-indigo-500 bg-indigo-50 text-indigo-600' : 'border-slate-100 dark:border-slate-800 text-slate-400'}`}>{v.name}</button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <button onClick={() => setIsSettingsOpen(false)} className="w-full bg-slate-800 dark:bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg">Speichern</button>
           </div>
-        </div>
-      )}
+          <MoodTracker currentMood={userStats.mood} onMoodSelect={(m) => setUserStats({ ...userStats, mood: m })} />
+          <div className="space-y-4">
+            {tasks.map(task => (<TaskItem key={task.id} task={task} onToggle={(id) => setTasks(tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t))} onDelete={(id) => setTasks(tasks.filter(t => t.id !== id))} onUpdate={(id, updates) => setTasks(tasks.map(t => t.id === id ? { ...t, ...updates } : t))} onToggleImportant={(id) => setTasks(tasks.map(t => t.id === id ? { ...t, isImportant: !t.isImportant } : t))} />))}
+          </div>
+          <div className="mt-auto pt-6 border-t dark:border-slate-800">
+             <div className="bg-indigo-50/30 dark:bg-indigo-900/10 p-6 rounded-[2.5rem] border border-indigo-100 dark:border-indigo-800">
+                <VoiceAssistant tasks={tasks} onAddTask={(t) => setTasks(prev => [...prev, t])} onDeleteTask={(id) => setTasks(prev => prev.filter(x => x.id !== id))} onUpdateTask={(id, updates) => setTasks(prev => prev.map(x => x.id === id ? { ...x, ...updates } : x))} onPlayBriefing={handlePlayBriefing} selectedVoice={selectedVoice} />
+             </div>
+          </div>
+        </section>
 
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
-        <div className={`flex-1 flex flex-col h-full bg-[#FDFDFD] dark:bg-slate-950 transition-all ${showPlan ? 'md:w-3/5' : 'w-full'}`}>
+        <section className="flex-1 border-l dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full relative">
           <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
-            {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
-                <div className="flex flex-col gap-1 max-w-[85%] group">
-                  <div className={`relative p-5 rounded-[2.2rem] text-sm leading-relaxed ${msg.role === 'user' ? 'bg-slate-800 text-white rounded-tr-none shadow-md' : 'bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-tl-none text-slate-700 dark:text-slate-200 shadow-sm'}`}>
-                    {msg.image && <img src={msg.image} className="max-w-full rounded-2xl mb-4" />}
-                    <div className="whitespace-pre-wrap">{msg.text || (isLoading && msg.id === messages[messages.length-1].id ? 'NoteHub schreibt...' : '')}</div>
-                    
-                    {msg.role === 'model' && msg.text && (
-                      <button 
-                        onClick={() => speakMessage(msg)}
-                        className={`absolute -right-12 top-2 p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border dark:border-slate-700 transition-all hover:scale-110 active:scale-90 ${currentlyPlayingId === msg.id ? 'text-indigo-500 animate-pulse' : 'text-slate-300'}`}
-                      >
-                        <Volume2 className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
+            {messages.map(msg => (
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[85%] p-4 rounded-[2rem] relative group ${msg.role === 'user' ? 'bg-indigo-500 text-white rounded-tr-none' : 'bg-slate-100 dark:bg-slate-800 dark:text-slate-100 rounded-tl-none'}`}>
+                  {msg.image && <img src={msg.image} className="w-full rounded-2xl mb-2" alt="Anhang" />}
+                  <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  
+                  {msg.role === 'model' && (
+                    <button 
+                      onClick={() => handlePlayMessage(msg.text)}
+                      className="absolute -right-10 bottom-0 p-2 text-slate-300 hover:text-indigo-500 transition-colors opacity-0 group-hover:opacity-100"
+                      title="Antwort vorlesen"
+                    >
+                      <Volume2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
             <div ref={messagesEndRef} />
           </div>
-          <div className="p-6 bg-white dark:bg-slate-900/50 border-t dark:border-slate-800 relative">
-            <ThoughtVisualizer active={isLoading} profile={userProfile} tasksCount={tasks.length} />
-            <div className="max-w-3xl mx-auto flex items-center gap-2">
-              <div className="flex-1 flex items-center bg-slate-50 dark:bg-slate-800 rounded-[2rem] border-2 border-transparent focus-within:border-indigo-500/20 transition-all">
-                <button onClick={() => fileInputRef.current?.click()} className="p-4 text-slate-400 hover:text-indigo-500 transition-colors"><Plus className="w-6 h-6" /></button>
-                <input type="file" ref={fileInputRef} onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) { const r = new FileReader(); r.onload = () => setSelectedImage(r.result as string); r.readAsDataURL(f); }
-                }} className="hidden" />
-                <input value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Schreib NoteHub oder frag nach Empfehlungen..." className="flex-1 bg-transparent px-4 py-5 text-sm outline-none dark:text-white" disabled={isLoading} />
-              </div>
-              <button onClick={handleSendMessage} disabled={isLoading} className={`bg-slate-800 dark:bg-indigo-600 text-white p-5 rounded-[1.5rem] shadow-lg transition-all active:scale-90 ${isLoading ? 'opacity-50' : 'hover:shadow-indigo-500/20'}`}><Send className="w-6 h-6" /></button>
+
+          <ThoughtVisualizer active={isLoading} profile={userProfile} tasksCount={tasks.length} />
+
+          <div className="p-4 bg-white dark:bg-slate-900 border-t dark:border-slate-800">
+            <form onSubmit={handleSendMessage} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-800 p-2 rounded-[2rem] border border-transparent focus-within:border-indigo-500/30 transition-all">
+              <button type="button" onClick={() => recognitionRef.current?.start()} className={`p-3 rounded-full transition-all ${isListening ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:text-indigo-500'}`}><Mic className="w-5 h-5" /></button>
+              <input value={userInput} onChange={(e) => setUserInput(e.target.value)} placeholder="Frag NoteHub oder sag 'Plan mir den Tag'..." className="flex-1 bg-transparent border-none outline-none text-sm dark:text-white px-2" />
+              <button type="submit" disabled={isLoading} className="p-3 bg-indigo-500 text-white rounded-full hover:bg-indigo-600 transition-all disabled:opacity-50">{isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}</button>
+            </form>
+          </div>
+        </section>
+      </main>
+
+      {isSettingsOpen && (
+        <div className="fixed inset-0 z-[250] bg-black/40 backdrop-blur-sm flex items-center justify-center p-6">
+          <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] p-8 space-y-8 shadow-2xl animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between shrink-0">
+              <h2 className="text-xl font-bold dark:text-white">Einstellungen</h2>
+              <button onClick={() => setIsSettingsOpen(false)}><X className="w-6 h-6 text-slate-400" /></button>
             </div>
-          </div>
-        </div>
-        
-        <div className={`fixed md:relative inset-y-0 right-0 w-full md:w-2/5 bg-slate-50/90 dark:bg-slate-900/95 backdrop-blur-xl border-l dark:border-slate-800 z-20 transition-transform transform ${showPlan ? 'translate-x-0' : 'translate-x-full md:translate-x-0 md:opacity-0 md:pointer-events-none'}`}>
-          <div className="h-full flex flex-col overflow-y-auto custom-scrollbar p-8 space-y-8">
-            <MoodTracker currentMood={userStats.mood} onMoodSelect={handleUpdateMood} />
-            {tasks.length > 0 || !!dayPlan ? (
-              <>
-                <div className="relative h-56 rounded-[3rem] overflow-hidden shadow-2xl">
-                  {focusImageUrl ? <img src={focusImageUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-200 dark:bg-slate-800 animate-pulse" />}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent p-8 flex flex-col justify-end">
-                    <h2 className="text-white font-bold text-2xl tracking-tight">{dayPlan?.focus || 'Fokus des Tages'}</h2>
-                    <button onClick={handlePlayBriefing} disabled={isBriefingLoading} className="mt-4 flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl">
-                      {isBriefingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />} Briefing
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between px-2">
-                    <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aufgaben ({progress}%)</h3>
-                    <button onClick={() => setShowPlan(false)} className="md:hidden p-2 text-slate-400"><ChevronDown className="w-6 h-6" /></button>
-                  </div>
-                  <div className="space-y-3">
-                    {tasks.map(task => <TaskItem key={task.id} task={task} onToggle={toggleTask} onToggleImportant={toggleImportant} onDelete={deleteTask} onUpdate={updateTask} />)}
-                  </div>
-                </div>
-                <div className="bg-white dark:bg-slate-900 p-8 rounded-[3rem] border dark:border-slate-800 shadow-sm">
-                  <VoiceAssistant tasks={tasks} onAddTask={addTask} onDeleteTask={deleteTask} onUpdateTask={updateTask} onPlayBriefing={handlePlayBriefing} selectedVoice={selectedVoice} />
-                </div>
-              </>
-            ) : (
-              <div className="h-full flex flex-col items-center justify-center text-center">
-                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-[2rem] flex items-center justify-center mb-6">
-                  <Brain className="w-8 h-8 text-slate-300" />
-                </div>
-                <h3 className="font-bold dark:text-slate-200 text-lg">Womit starten wir?</h3>
-                <p className="text-xs text-slate-400 mt-2 mb-10 leading-relaxed px-6">Lass uns einen Plan schmieden oder frag mich nach Empfehlungen für einen produktiven Tag.</p>
-                <div className="w-full p-8 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-[3rem] shadow-sm">
-                  <VoiceAssistant tasks={tasks} onAddTask={addTask} onDeleteTask={deleteTask} onUpdateTask={updateTask} onPlayBriefing={handlePlayBriefing} selectedVoice={selectedVoice} />
+            <div className="space-y-8 overflow-y-auto custom-scrollbar px-1">
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2"><User className="w-4 h-4 text-indigo-500" /><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Profil</h3></div>
+                <div className="space-y-2"><label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Nutzername</label><input type="text" value={userProfile.name} onChange={(e) => setUserProfile(p => ({ ...p, name: e.target.value }))} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl outline-none focus:ring-2 ring-indigo-500/20" placeholder="Dein Name" /></div>
+              </div>
+              <div className="space-y-4">
+                 <div className="flex items-center gap-2 mb-2"><Volume2 className="w-4 h-4 text-indigo-500" /><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Stimme wählen</h3></div>
+                <div className="grid grid-cols-1 gap-2">
+                  {VOICES.map(v => (
+                    <div key={v.id} className="flex items-center gap-2">
+                      <button onClick={() => setSelectedVoice(v.id)} className={`flex-1 p-3 rounded-xl border-2 transition-all text-xs font-bold text-left flex items-center justify-between ${selectedVoice === v.id ? 'border-indigo-500 bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30' : 'border-slate-100 dark:border-slate-800 text-slate-400'}`}><span>{v.name} ({v.label})</span>{selectedVoice === v.id && <Check className="w-4 h-4" />}</button>
+                      <button onClick={() => handlePreviewVoice(v.id)} className={`p-3 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-indigo-500 transition-colors ${isPreviewingVoice === v.id ? 'animate-pulse text-indigo-500' : ''}`} title="Vorschau anhören">{isPreviewingVoice === v.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}</button>
+                    </div>
+                  ))}
                 </div>
               </div>
-            )}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 mb-2"><Sparkles className="w-4 h-4 text-indigo-500" /><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Live-Unterhaltung</h3></div>
+                <button onClick={() => { setShowVoiceOverlay(true); setIsSettingsOpen(false); }} className="w-full flex items-center justify-between p-4 bg-indigo-600 text-white rounded-2xl shadow-lg shadow-indigo-500/20 hover:bg-indigo-700 transition-all active:scale-[0.98]"><div className="flex items-center gap-3"><Headphones className="w-5 h-5" /><span className="font-bold">Live Voice starten</span></div><ChevronDown className="w-5 h-5 -rotate-90 opacity-50" /></button>
+              </div>
+              <div className="space-y-4 pt-4 border-t dark:border-slate-800">
+                <div className="flex items-center gap-2 mb-2"><Trash2 className="w-4 h-4 text-red-500" /><h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Datenverwaltung</h3></div>
+                <button onClick={handleClearChat} className="w-full flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-2xl font-bold hover:bg-red-100 transition-all active:scale-[0.98]"><Trash2 className="w-5 h-5" />Chatverlauf leeren</button>
+              </div>
+            </div>
+            <button onClick={() => setIsSettingsOpen(false)} className="w-full bg-slate-800 dark:bg-indigo-600 text-white py-4 rounded-2xl font-bold shadow-lg mt-8 shrink-0">Fertig</button>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

@@ -13,7 +13,11 @@ import {
   Image as ImageIcon, 
   Maximize2,
   Bell,
-  BellOff
+  BellOff,
+  ChevronDown,
+  AlertTriangle,
+  HelpCircle,
+  MoreHorizontal
 } from 'lucide-react';
 
 interface TaskItemProps {
@@ -31,11 +35,25 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
   const [showTimePicker, setShowTimePicker] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const priorityColor = {
-    high: 'text-red-500 bg-red-50 dark:bg-red-900/20 dark:text-red-400',
-    medium: 'text-amber-500 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400',
-    low: 'text-blue-500 bg-blue-50 dark:bg-blue-900/20 dark:text-blue-400'
-  }[task.priority];
+  const priorityConfig = {
+    high: { 
+      symbol: '!', 
+      color: 'text-red-500 bg-red-50 dark:bg-red-900/30 border-red-100 dark:border-red-800/50',
+      next: 'medium' as const
+    },
+    medium: { 
+      symbol: '?', 
+      color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/30 border-amber-100 dark:border-amber-800/50',
+      next: 'low' as const
+    },
+    low: { 
+      symbol: '.', 
+      color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800/50',
+      next: 'high' as const
+    }
+  };
+
+  const currentPriority = priorityConfig[task.priority];
 
   const containerClasses = `
     relative flex flex-col p-5 rounded-[2rem] transition-all border-2 overflow-hidden
@@ -54,6 +72,12 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
         onUpdate(task.id, { imageUrl: reader.result as string });
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const togglePriority = () => {
+    if (onUpdate && !task.completed) {
+      onUpdate(task.id, { priority: currentPriority.next });
     }
   };
 
@@ -97,6 +121,20 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
             
             <div className="flex flex-col flex-1 min-w-0">
               <div className="flex items-center gap-2">
+                {/* Prioritäts-Indikator direkt neben dem Titel */}
+                <button 
+                  onClick={togglePriority}
+                  disabled={task.completed}
+                  className={`
+                    w-6 h-6 flex items-center justify-center rounded-lg border text-[10px] font-black transition-all shrink-0
+                    ${currentPriority.color}
+                    ${!task.completed ? 'hover:scale-110 active:scale-95 shadow-sm' : 'opacity-30 cursor-not-allowed'}
+                  `}
+                  title={`Priorität: ${task.priority} (Klicken zum Ändern)`}
+                >
+                  {currentPriority.symbol}
+                </button>
+
                 <span className={`font-bold text-sm truncate transition-all ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>
                   {task.title}
                 </span>
@@ -115,9 +153,7 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
                     <Bell className="w-3 h-3" /> {task.reminderAt}
                   </span>
                 )}
-                <span className={`text-[8px] uppercase font-black px-2 py-0.5 rounded-lg ${priorityColor}`}>
-                  {task.priority}
-                </span>
+                
                 {task.imageUrl && (
                   <button 
                     onClick={() => setIsPreviewOpen(true)}

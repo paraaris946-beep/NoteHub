@@ -49,6 +49,7 @@ export const generateAppLogo = async (): Promise<string> => {
     config: { imageConfig: { aspectRatio: "1:1" } }
   });
 
+  // Correctly iterate through parts to find image data as per guidelines.
   for (const part of response.candidates?.[0]?.content?.parts || []) {
     if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
   }
@@ -63,6 +64,7 @@ export const generateFocusImage = async (focus: string): Promise<string> => {
     config: { imageConfig: { aspectRatio: "16:9" } }
   });
 
+  // Correctly iterate through parts to find image data.
   for (const part of response.candidates?.[0]?.content?.parts || []) {
     if (part.inlineData) return `data:image/png;base64,${part.inlineData.data}`;
   }
@@ -129,16 +131,16 @@ export function decodeBase64(base64: string) {
   return bytes;
 }
 
+// Manually decode raw PCM16 data into an AudioBuffer following guidelines for stream processing.
 export async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
-  const frameCount = data.byteLength / (2 * numChannels);
+  const dataInt16 = new Int16Array(data.buffer, data.byteOffset, data.byteLength / 2);
+  const frameCount = dataInt16.length / numChannels;
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
 
-  for (let i = 0; i < frameCount; i++) {
-    for (let channel = 0; channel < numChannels; channel++) {
-      const index = (i * numChannels + channel) * 2;
-      const sample = view.getInt16(index, true);
-      buffer.getChannelData(channel)[i] = sample / 32768.0;
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
     }
   }
   return buffer;

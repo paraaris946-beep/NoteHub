@@ -105,8 +105,11 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
             scriptProcessor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
               const int16 = new Int16Array(inputData.length);
-              for (let i = 0; i < inputData.length; i++) { int16[i] = inputData[i] * 32767; }
-              const pcmBlob = { data: encodeBase64(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
+              for (let i = 0; i < inputData.length; i++) { int16[i] = inputData[i] * 32768; }
+              const pcmBlob = { 
+                data: encodeBase64(new Uint8Array(int16.buffer)), 
+                mimeType: 'audio/pcm;rate=16000' 
+              };
               sessionPromise.then(s => s.sendRealtimeInput({ media: pcmBlob }));
             };
             source.connect(scriptProcessor);
@@ -158,19 +161,22 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center gap-4 w-full">
+    <div className="flex flex-col items-center gap-3 w-full">
       {isActive && (
-        <div className="w-full p-4 bg-indigo-50/50 dark:bg-indigo-900/20 rounded-2xl mb-4 border border-indigo-100 dark:border-indigo-800">
-          <p className="text-xs font-bold text-indigo-400 uppercase mb-2">NoteHub Live</p>
-          <p className="text-sm dark:text-slate-200">{transcription || 'Höre zu...'}</p>
+        <div className="w-full p-3 bg-white/50 dark:bg-slate-900/50 backdrop-blur rounded-2xl mb-1 border border-indigo-100 dark:border-indigo-800 animate-in fade-in slide-in-from-bottom-2">
+          <p className="text-[10px] font-black text-indigo-500 uppercase mb-1 tracking-widest">Live Transkription</p>
+          <p className="text-xs dark:text-slate-200 italic">"{transcription || 'Höre zu...'}"</p>
         </div>
       )}
-      <button onClick={isActive ? stopSession : startSession} disabled={isConnecting} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${isActive ? 'bg-red-500 shadow-red-500/20 animate-pulse' : 'bg-indigo-600 shadow-indigo-600/20'} text-white shadow-xl`}>
-        {isConnecting ? <Loader2 className="w-10 h-10 animate-spin" /> : isActive ? <X className="w-10 h-10" /> : <Mic className="w-10 h-10" />}
+      <button 
+        onClick={isActive ? stopSession : startSession} 
+        disabled={isConnecting} 
+        className={`w-14 h-14 rounded-full flex items-center justify-center transition-all shadow-lg active:scale-95 ${isActive ? 'bg-red-500 shadow-red-500/20' : 'bg-indigo-600 shadow-indigo-600/20'}`}
+      >
+        {isConnecting ? <Loader2 className="w-6 h-6 animate-spin text-white" /> : isActive ? <X className="w-6 h-6 text-white" /> : <Mic className="w-6 h-6 text-white" />}
       </button>
       <div className="text-center">
-        <h3 className="font-bold text-slate-800 dark:text-slate-200">NoteHub Voice</h3>
-        <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1">Briefing oder Aufgaben diktieren</p>
+        <h3 className="text-xs font-bold text-slate-800 dark:text-slate-200">NoteHub Voice</h3>
       </div>
     </div>
   );
