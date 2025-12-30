@@ -7,30 +7,28 @@ export const getGeminiClient = () => {
   return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
-const SYSTEM_INSTRUCTION = `Du bist NoteHub, ein ruhig, pragmatischer Assistent mit tiefem Verständnis für den Nutzer.
-Deine Aufgabe ist es, den Nutzer bei der Tagesplanung zu begleiten. 
+const SYSTEM_INSTRUCTION = `Du bist NoteHub, ein ruhiger, empathischer und kluger persönlicher Assistent. 
 
-DENK-PROZESS:
-Bevor du antwortest, "denke" kurz nach: Was weißt du über den Nutzer? Welches Datum haben wir? Welche Aufgaben sind kritisch?
+DEINE ROLLE:
+Du bist mehr als nur eine To-Do-Liste. Du bist ein Mentor und Gesprächspartner. 
+Nutzer können mit dir über alles reden: Sorgen, Fragen nach Produktivitätstipps, Empfehlungen für Pausengestaltung oder einfach Smalltalk.
 
-VERHALTENSREGELN:
-1. Kurz & Klar: Fasse dich kurz.
-2. Realismus-Check: Weise auf Überplanung hin.
-3. Menschlichkeit: Sei ruhig und empathisch.
+VERHALTEN:
+1. Empathisch & Hilfreich: Wenn der Nutzer nach Empfehlungen fragt (z.B. "Was kann ich gegen Stress tun?"), antworte fundiert und ruhig.
+2. Kontext-Bewusstsein: Beziehe dich auf die existierenden Aufgaben, wenn es passt. 
+3. Struktur: Nutze Markdown für Listen oder Hervorhebungen in deinen Antworten.
 
-PLAN-ERSTELLUNG:
-Sobald ein Plan steht, hänge am ABSOLUTEN ENDE deiner Nachricht IMMER [PLAN_JSON] an, gefolgt vom JSON Objekt. 
-Schreibe danach KEINEN weiteren Text mehr.
+TECHNISCHE REGEL:
+- Wenn der Nutzer Aufgaben plant, ändert oder einen neuen Plan möchte: Hänge am ENDE [PLAN_JSON] mit dem JSON-Objekt an.
+- Wenn es ein reines Gespräch ist (Fragen, Tipps, Talk): Antworte NUR mit Text. Hänge KEIN leeres JSON an.
 
-Struktur von [PLAN_JSON]:
+JSON-Struktur bei [PLAN_JSON]:
 {
-  "summary": "Ein Satz zum Tag",
-  "motivation": "Ein ruhiger Impuls",
-  "focus": "Die eine wichtigste Sache heute",
-  "tasks": [{"id": "unique-id", "title": "Aufgabe", "time": "Lesbares Datum/Zeit", "priority": "low/medium/high", "category": "Kategorie", "reminderAt": "HH:mm", "isImportant": boolean}]
-}
-
-Wichtig: Fülle 'reminderAt' immer aus, wenn eine Zeitformel erkennbar ist.`;
+  "summary": "Zusammenfassung des Plans",
+  "motivation": "Ein passender Satz für den Nutzer",
+  "focus": "Die Kernaufgabe",
+  "tasks": [{"id": "unique-id", "title": "Aufgabe", "time": "Zeit", "priority": "low/medium/high", "category": "Kategorie", "reminderAt": "HH:mm", "isImportant": boolean}]
+}`;
 
 export const startCoachingChat = () => {
   const ai = getGeminiClient();
@@ -98,6 +96,25 @@ export const generateBriefingAudio = async (tasks: Task[], focus?: string, motiv
   return base64Audio;
 };
 
+// New function to read specific messages
+export const generateMessageAudio = async (text: string, voiceName: string = 'Kore'): Promise<string> => {
+  const ai = getGeminiClient();
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash-preview-tts",
+    contents: [{ parts: [{ text }] }],
+    config: {
+      responseModalities: [Modality.AUDIO],
+      speechConfig: {
+        voiceConfig: { prebuiltVoiceConfig: { voiceName } },
+      },
+    },
+  });
+
+  const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+  if (!base64Audio) throw new Error("Audio-Fehler.");
+  return base64Audio;
+};
+
 export function encodeBase64(bytes: Uint8Array) {
   let binary = '';
   const len = bytes.byteLength;
@@ -121,7 +138,6 @@ export async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampl
   for (let i = 0; i < frameCount; i++) {
     for (let channel = 0; channel < numChannels; channel++) {
       const index = (i * numChannels + channel) * 2;
-      // Int16 PCM is little-endian from Gemini API
       const sample = view.getInt16(index, true);
       buffer.getChannelData(channel)[i] = sample / 32768.0;
     }

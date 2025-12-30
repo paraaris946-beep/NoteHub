@@ -6,6 +6,7 @@ import {
   startCoachingChat, 
   generateFocusImage, 
   generateBriefingAudio, 
+  generateMessageAudio,
   generateAppLogo,
   decodeBase64, 
   decodeAudioData 
@@ -16,7 +17,6 @@ import VoiceAssistant from './components/VoiceAssistant';
 import MoodTracker from './components/MoodTracker';
 import { 
   Settings, 
-  Sparkles,
   LayoutDashboard,
   Send,
   ChevronDown,
@@ -24,24 +24,14 @@ import {
   Volume2,
   Loader2,
   X,
-  Clock,
   Moon,
   Sun,
-  Mic,
   Plus,
-  Eraser,
-  Info,
-  Headphones,
-  Download,
-  Search,
-  MessageSquare,
-  ExternalLink,
   User,
-  Calendar,
-  IdCard,
-  Zap,
   Brain,
-  Bell
+  Bell,
+  Check,
+  Play
 } from 'lucide-react';
 
 const INITIAL_MESSAGE: Message = { 
@@ -67,26 +57,20 @@ const ThoughtVisualizer: React.FC<{ active: boolean; profile: UserProfile; tasks
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Brain className="w-5 h-5 text-indigo-500 animate-pulse" />
-            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">NoteHub Denkprozess</span>
+            <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest">NoteHub analysiert...</span>
           </div>
           <div className="flex gap-1">
             {[1, 2, 3].map(i => <div key={i} className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: `${i * 0.1}s` }} />)}
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <div className="flex items-center gap-2 p-3 rounded-2xl border border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/20">
             <User className="w-3.5 h-3.5 text-indigo-500" />
-            <div className="flex flex-col">
-              <span className="text-[9px] font-bold text-slate-400 uppercase">Gedächtnis</span>
-              <span className="text-[11px] font-bold truncate dark:text-slate-200">{profile.name || "Aktiv..."}</span>
-            </div>
+            <span className="text-[11px] font-bold truncate dark:text-slate-200">Kontext: {profile.name || "Aktiv"}</span>
           </div>
           <div className="flex items-center gap-2 p-3 rounded-2xl border border-indigo-500/30 bg-indigo-50/50 dark:bg-indigo-900/20">
             <LayoutDashboard className="w-3.5 h-3.5 text-indigo-500" />
-            <div className="flex flex-col">
-              <span className="text-[9px] font-bold text-slate-400 uppercase">Struktur</span>
-              <span className="text-[11px] font-bold truncate dark:text-slate-200">{tasksCount} Aufgaben</span>
-            </div>
+            <span className="text-[11px] font-bold truncate dark:text-slate-200">{tasksCount} Erinnerungen</span>
           </div>
         </div>
       </div>
@@ -130,15 +114,17 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('minicoach_theme');
     return saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
   });
+  const [currentlyPlayingId, setCurrentlyPlayingId] = useState<string | null>(null);
   
-  // Reminder State
   const [activeNotification, setActiveNotification] = useState<Task | null>(null);
   const triggeredRemindersRef = useRef<Set<string>>(new Set());
+  const tasksRef = useRef<Task[]>(tasks);
+
+  useEffect(() => { tasksRef.current = tasks; }, [tasks]);
 
   const chatRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
 
   useEffect(() => { localStorage.setItem('minicoach_tasks', JSON.stringify(tasks)); }, [tasks]);
   useEffect(() => { localStorage.setItem('minicoach_dayplan', JSON.stringify(dayPlan)); }, [dayPlan]);
@@ -154,27 +140,13 @@ const App: React.FC = () => {
     if (cachedLogo) setAppLogoUrl(cachedLogo);
     else handleRegenerateLogo();
 
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.lang = 'de-DE';
-      recognitionRef.current.onresult = (e: any) => {
-        const transcript = e.results[0][0].transcript;
-        setUserInput(prev => (prev.trim() ? prev.trim() + ' ' : '') + transcript);
-      };
-    }
-  }, []);
-
-  // Reminder Monitoring Loop
-  useEffect(() => {
     const interval = setInterval(() => {
       const now = new Date();
       const currentH = now.getHours().toString().padStart(2, '0');
       const currentM = now.getMinutes().toString().padStart(2, '0');
       const timeStr = `${currentH}:${currentM}`;
 
-      tasks.forEach(task => {
+      tasksRef.current.forEach(task => {
         if (task.reminderAt === timeStr && !task.completed) {
           const reminderKey = `${task.id}-${timeStr}`;
           if (!triggeredRemindersRef.current.has(reminderKey)) {
@@ -183,17 +155,18 @@ const App: React.FC = () => {
           }
         }
       });
-      
-      // Clear triggered list on date change or occasionally?
-      // For now, it stays for the session.
-    }, 30000); // Check every 30s
+    }, 10000);
+
     return () => clearInterval(interval);
-  }, [tasks]);
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isLoading]);
 
   const triggerReminder = (task: Task) => {
     playNotificationSound('Chime');
     setActiveNotification(task);
-    setTimeout(() => setActiveNotification(null), 8000);
   };
 
   useEffect(() => {
@@ -231,7 +204,7 @@ const App: React.FC = () => {
         const base64Data = currentImage.split(',')[1];
         const result = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
-          contents: [{ parts: [{ inlineData: { data: base64Data, mimeType: 'image/jpeg' } }, { text: `${currentInput || "Analysiere das Bild."} Nutze [PLAN_JSON] für Aufgaben.` }] }],
+          contents: [{ parts: [{ inlineData: { data: base64Data, mimeType: 'image/jpeg' } }, { text: `${currentInput || "Analysiere das Bild."}` }] }],
         });
         responseText = result.text || "";
         updateStreamingMessage(modelId, responseText);
@@ -256,12 +229,28 @@ const App: React.FC = () => {
           setFocusImageUrl(img);
         }
       }
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error(err); updateStreamingMessage(Date.now().toString(), "Entschuldige, da gab es ein Problem mit der Verbindung."); }
     finally { setIsLoading(false); }
   };
 
   const updateStreamingMessage = (id: string, text: string) => {
     setMessages(prev => prev.map(m => m.id === id ? { ...m, text } : m));
+  };
+
+  const speakMessage = async (msg: Message) => {
+    if (currentlyPlayingId === msg.id) return;
+    setCurrentlyPlayingId(msg.id);
+    try {
+      const base64Audio = await generateMessageAudio(msg.text, selectedVoice);
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      if (ctx.state === 'suspended') await ctx.resume();
+      const audioBuffer = await decodeAudioData(decodeBase64(base64Audio), ctx, 24000, 1);
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(ctx.destination);
+      source.onended = () => setCurrentlyPlayingId(null);
+      source.start(0);
+    } catch (err) { console.error(err); setCurrentlyPlayingId(null); }
   };
 
   const handlePlayBriefing = async () => {
@@ -293,22 +282,26 @@ const App: React.FC = () => {
   const progress = useMemo(() => tasks.length === 0 ? 0 : Math.round((tasks.filter(t => t.completed).length / tasks.length) * 100), [tasks]);
 
   return (
-    <div className="min-h-screen bg-[#FDFDFD] dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col h-screen overflow-hidden">
-      {/* Reminder Notification Signal */}
+    <div className={`min-h-screen bg-[#FDFDFD] dark:bg-slate-950 text-slate-800 dark:text-slate-100 flex flex-col h-screen overflow-hidden transition-all duration-700 ${activeNotification ? 'ring-[12px] ring-inset ring-indigo-500/50' : ''}`}>
+      
       {activeNotification && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[200] w-[90%] max-w-sm animate-in fade-in slide-in-from-top-8 duration-500">
-          <div className="bg-indigo-600 dark:bg-indigo-500 text-white p-5 rounded-[2.5rem] shadow-2xl shadow-indigo-500/40 flex items-center gap-4 relative overflow-hidden group">
-            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-r from-white/0 via-white/10 to-white/0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
-              <Bell className="w-6 h-6 animate-bounce" />
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center p-6 animate-in fade-in duration-300">
+          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-xl" onClick={() => setActiveNotification(null)} />
+          <div className="absolute inset-0 bg-indigo-500/10 animate-pulse pointer-events-none" />
+          <div className="relative bg-white dark:bg-slate-900 w-full max-w-sm rounded-[3rem] p-10 shadow-[0_0_100px_rgba(99,102,241,0.3)] border-2 border-indigo-500/30 text-center animate-in zoom-in-95 duration-500 flex flex-col items-center">
+            <div className="w-24 h-24 bg-indigo-50 dark:bg-indigo-900/30 rounded-[2rem] flex items-center justify-center mb-8 relative">
+              <div className="absolute inset-0 bg-indigo-500/20 rounded-[2rem] animate-ping" />
+              <Bell className="w-10 h-10 text-indigo-500 fill-indigo-500" />
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-black uppercase tracking-widest opacity-70">Erinnerung</p>
-              <p className="font-bold text-sm truncate">{activeNotification.title}</p>
+            <h2 className="text-[10px] font-black text-indigo-500 uppercase tracking-[0.2em] mb-3">Erinnerungssignal</h2>
+            <h3 className="text-2xl font-black text-slate-800 dark:text-white mb-4 leading-tight">{activeNotification.title}</h3>
+            <p className="text-sm text-slate-400 dark:text-slate-500 mb-10 px-4">Es ist {activeNotification.reminderAt} Uhr. Zeit für deine Aufgabe.</p>
+            <div className="flex flex-col w-full gap-3">
+              <button onClick={() => { toggleTask(activeNotification.id); setActiveNotification(null); }} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-bold shadow-xl shadow-indigo-200 dark:shadow-none hover:bg-indigo-700 transition-all active:scale-95 flex items-center justify-center gap-2">
+                <Check className="w-5 h-5" /> Erledigt
+              </button>
+              <button onClick={() => setActiveNotification(null)} className="w-full py-5 text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl transition-colors">Später</button>
             </div>
-            <button onClick={() => setActiveNotification(null)} className="p-2 hover:bg-white/10 rounded-xl transition-colors">
-              <X className="w-5 h-5" />
-            </button>
           </div>
         </div>
       )}
@@ -340,7 +333,7 @@ const App: React.FC = () => {
                 <input type="text" value={userProfile.name} onChange={(e) => setUserProfile(p => ({ ...p, name: e.target.value }))} className="w-full px-4 py-3 bg-slate-50 dark:bg-slate-800 rounded-xl" placeholder="Dein Name" />
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase">Vorlesestimme</label>
+                <label className="text-xs font-bold text-slate-400 uppercase">Stimme</label>
                 <div className="grid grid-cols-2 gap-2">
                   {VOICES.map(v => (
                     <button key={v.id} onClick={() => setSelectedVoice(v.id)} className={`p-3 rounded-xl border-2 transition-all ${selectedVoice === v.id ? 'border-indigo-500 bg-indigo-50 text-indigo-600' : 'border-slate-100 dark:border-slate-800 text-slate-400'}`}>{v.name}</button>
@@ -357,11 +350,20 @@ const App: React.FC = () => {
         <div className={`flex-1 flex flex-col h-full bg-[#FDFDFD] dark:bg-slate-950 transition-all ${showPlan ? 'md:w-3/5' : 'w-full'}`}>
           <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
             {messages.map((msg) => (
-              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2`}>
-                <div className="flex flex-col gap-1 max-w-[85%]">
-                  <div className={`p-4 rounded-[2rem] text-sm ${msg.role === 'user' ? 'bg-slate-800 text-white rounded-tr-none' : 'bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-tl-none text-slate-700 dark:text-slate-200 shadow-sm'}`}>
-                    {msg.image && <img src={msg.image} className="max-w-full rounded-2xl mb-3" />}
-                    {msg.text || (isLoading && msg.id === messages[messages.length-1].id ? 'Denke nach...' : '')}
+              <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
+                <div className="flex flex-col gap-1 max-w-[85%] group">
+                  <div className={`relative p-5 rounded-[2.2rem] text-sm leading-relaxed ${msg.role === 'user' ? 'bg-slate-800 text-white rounded-tr-none shadow-md' : 'bg-white dark:bg-slate-900 border dark:border-slate-800 rounded-tl-none text-slate-700 dark:text-slate-200 shadow-sm'}`}>
+                    {msg.image && <img src={msg.image} className="max-w-full rounded-2xl mb-4" />}
+                    <div className="whitespace-pre-wrap">{msg.text || (isLoading && msg.id === messages[messages.length-1].id ? 'NoteHub schreibt...' : '')}</div>
+                    
+                    {msg.role === 'model' && msg.text && (
+                      <button 
+                        onClick={() => speakMessage(msg)}
+                        className={`absolute -right-12 top-2 p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border dark:border-slate-700 transition-all hover:scale-110 active:scale-90 ${currentlyPlayingId === msg.id ? 'text-indigo-500 animate-pulse' : 'text-slate-300'}`}
+                      >
+                        <Volume2 className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -371,35 +373,35 @@ const App: React.FC = () => {
           <div className="p-6 bg-white dark:bg-slate-900/50 border-t dark:border-slate-800 relative">
             <ThoughtVisualizer active={isLoading} profile={userProfile} tasksCount={tasks.length} />
             <div className="max-w-3xl mx-auto flex items-center gap-2">
-              <div className="flex-1 flex items-center bg-slate-50 dark:bg-slate-800 rounded-[2rem] border-2 border-transparent focus-within:border-indigo-500/20">
-                <button onClick={() => fileInputRef.current?.click()} className="p-3 text-slate-400"><Plus className="w-6 h-6" /></button>
+              <div className="flex-1 flex items-center bg-slate-50 dark:bg-slate-800 rounded-[2rem] border-2 border-transparent focus-within:border-indigo-500/20 transition-all">
+                <button onClick={() => fileInputRef.current?.click()} className="p-4 text-slate-400 hover:text-indigo-500 transition-colors"><Plus className="w-6 h-6" /></button>
                 <input type="file" ref={fileInputRef} onChange={(e) => {
                   const f = e.target.files?.[0];
                   if (f) { const r = new FileReader(); r.onload = () => setSelectedImage(r.result as string); r.readAsDataURL(f); }
                 }} className="hidden" />
-                <input value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Schreib NoteHub..." className="flex-1 bg-transparent px-4 py-4 text-sm outline-none dark:text-white" disabled={isLoading} />
+                <input value={userInput} onChange={(e) => setUserInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()} placeholder="Schreib NoteHub..." className="flex-1 bg-transparent px-4 py-5 text-sm outline-none dark:text-white" disabled={isLoading} />
               </div>
-              <button onClick={handleSendMessage} disabled={isLoading} className="bg-slate-800 dark:bg-indigo-600 text-white p-4 rounded-[1.5rem] shadow-lg"><Send className="w-6 h-6" /></button>
+              <button onClick={handleSendMessage} disabled={isLoading} className={`bg-slate-800 dark:bg-indigo-600 text-white p-5 rounded-[1.5rem] shadow-lg transition-all active:scale-90 ${isLoading ? 'opacity-50' : 'hover:shadow-indigo-500/20'}`}><Send className="w-6 h-6" /></button>
             </div>
           </div>
         </div>
+        
         <div className={`fixed md:relative inset-y-0 right-0 w-full md:w-2/5 bg-slate-50/90 dark:bg-slate-900/95 backdrop-blur-xl border-l dark:border-slate-800 z-20 transition-transform transform ${showPlan ? 'translate-x-0' : 'translate-x-full md:translate-x-0 md:opacity-0 md:pointer-events-none'}`}>
           <div className="h-full flex flex-col overflow-y-auto custom-scrollbar p-8 space-y-8">
             <MoodTracker currentMood={userStats.mood} onMoodSelect={handleUpdateMood} />
-            
             {tasks.length > 0 || !!dayPlan ? (
               <>
                 <div className="relative h-56 rounded-[3rem] overflow-hidden shadow-2xl">
                   {focusImageUrl ? <img src={focusImageUrl} className="w-full h-full object-cover" /> : <div className="w-full h-full bg-slate-200 dark:bg-slate-800 animate-pulse" />}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/80 to-transparent p-8 flex flex-col justify-end">
-                    <h2 className="text-white font-bold text-2xl tracking-tight">{dayPlan?.focus || 'Dein Tag'}</h2>
+                    <h2 className="text-white font-bold text-2xl tracking-tight">{dayPlan?.focus || 'Fokus des Tages'}</h2>
                     <button onClick={handlePlayBriefing} disabled={isBriefingLoading} className="mt-4 flex items-center gap-2 bg-white text-slate-900 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest shadow-xl">
                       {isBriefingLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Volume2 className="w-4 h-4" />} Briefing
                     </button>
                   </div>
                 </div>
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between px-2">
                     <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Aufgaben ({progress}%)</h3>
                     <button onClick={() => setShowPlan(false)} className="md:hidden p-2 text-slate-400"><ChevronDown className="w-6 h-6" /></button>
                   </div>
@@ -413,9 +415,11 @@ const App: React.FC = () => {
               </>
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-center">
-                <LayoutDashboard className="w-12 h-12 text-slate-300 dark:text-slate-700 mb-4" />
-                <h3 className="font-bold dark:text-slate-200">Kein Plan aktiv</h3>
-                <p className="text-xs text-slate-400 mt-2 mb-10">Diktier mir eine Aufgabe oder frag mich etwas!</p>
+                <div className="w-20 h-20 bg-slate-100 dark:bg-slate-800 rounded-[2rem] flex items-center justify-center mb-6">
+                  <Brain className="w-8 h-8 text-slate-300" />
+                </div>
+                <h3 className="font-bold dark:text-slate-200 text-lg">Womit starten wir?</h3>
+                <p className="text-xs text-slate-400 mt-2 mb-10 leading-relaxed px-6">Lass uns einen Plan schmieden oder frag mich nach Empfehlungen für einen produktiven Tag.</p>
                 <div className="w-full p-8 bg-white dark:bg-slate-800 border dark:border-slate-700 rounded-[3rem] shadow-sm">
                   <VoiceAssistant tasks={tasks} onAddTask={addTask} onDeleteTask={deleteTask} onUpdateTask={updateTask} onPlayBriefing={handlePlayBriefing} selectedVoice={selectedVoice} />
                 </div>
