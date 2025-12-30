@@ -28,12 +28,11 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   const [transcription, setTranscription] = useState('');
   
   const audioContextRef = useRef<AudioContext | null>(null);
+  const inputAudioContextRef = useRef<AudioContext | null>(null);
   const sessionRef = useRef<any>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const nextStartTimeRef = useRef(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
-  
-  const currentTurnTranscriptionRef = useRef('');
 
   const stopSession = useCallback(() => {
     if (sessionRef.current) {
@@ -44,15 +43,21 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
+    if (inputAudioContextRef.current) {
+      inputAudioContextRef.current.close();
+      inputAudioContextRef.current = null;
+    }
     if (audioContextRef.current) {
+      for (const source of sourcesRef.current) {
+        try { source.stop(); } catch(e) {}
+      }
+      sourcesRef.current.clear();
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
     setIsActive(false);
     setIsConnecting(false);
     setTranscription('');
-    currentTurnTranscriptionRef.current = '';
-    setError(null);
   }, []);
 
   const startSession = async () => {
@@ -60,49 +65,34 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
     setError(null);
     try {
       const ai = getGeminiClient();
-      let stream: MediaStream;
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        streamRef.current = stream;
-      } catch (err: any) {
-        throw new Error("Mikrofon-Zugriff verweigert.");
-      }
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
 
-      const inputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      const outputAudioContext = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      audioContextRef.current = outputAudioContext;
+      const inCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      const outCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      inputAudioContextRef.current = inCtx;
+      audioContextRef.current = outCtx;
 
-      await inputAudioContext.resume();
-      await outputAudioContext.resume();
-
-      const now = new Date();
-      const dateStr = now.toLocaleDateString('de-DE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-      const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-
-      const taskListSummary = tasks.length > 0 
-        ? tasks.map(t => `- [${t.priority.toUpperCase()}] ${t.title}${t.time ? ' (Geplant für ' + t.time + ')' : ''}${t.completed ? ' [ERLEDIGT]' : ' [OFFEN]'}`).join('\n')
-        : 'Deine Liste ist aktuell leer.';
-
-      const addTaskTool: FunctionDeclaration = {
-        name: 'addTask',
-        description: 'Tool zum Erstellen einer NEUEN Aufgabe.',
-        parameters: {
-          type: Type.OBJECT,
-          properties: {
-            title: { type: Type.STRING },
-            time: { type: Type.STRING },
-            reminderAt: { type: Type.STRING },
-            priority: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
+      const tools: FunctionDeclaration[] = [
+        {
+          name: 'addTask',
+          description: 'Fügt eine neue Aufgabe hinzu.',
+          parameters: {
+            type: Type.OBJECT,
+            properties: {
+              title: { type: Type.STRING },
+              time: { type: Type.STRING },
+              priority: { type: Type.STRING, enum: ['low', 'medium', 'high'] },
+            },
+            required: ['title'],
           },
-          required: ['title'],
         },
-      };
-
-      const deleteTaskTool: FunctionDeclaration = {
-        name: 'deleteTask',
-        description: 'Löscht eine Aufgabe.',
-        parameters: { type: Type.OBJECT, properties: { taskId: { type: Type.STRING } }, required: ['taskId'] },
-      };
+        {
+          name: 'playBriefing',
+          description: 'Spielt das tägliche Briefing ab.',
+          parameters: { type: Type.OBJECT, properties: {} },
+        }
+      ];
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-09-2025',
@@ -110,52 +100,53 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
           onopen: () => {
             setIsActive(true);
             setIsConnecting(false);
-            const source = inputAudioContext.createMediaStreamSource(stream);
-            const scriptProcessor = inputAudioContext.createScriptProcessor(4096, 1, 1);
+            const source = inCtx.createMediaStreamSource(stream);
+            const scriptProcessor = inCtx.createScriptProcessor(4096, 1, 1);
             scriptProcessor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
-              const l = inputData.length;
-              const int16 = new Int16Array(l);
-              for (let i = 0; i < l; i++) { int16[i] = inputData[i] * 32768; }
+              const int16 = new Int16Array(inputData.length);
+              for (let i = 0; i < inputData.length; i++) { int16[i] = inputData[i] * 32767; }
               const pcmBlob = { data: encodeBase64(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
-              sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
+              sessionPromise.then(s => s.sendRealtimeInput({ media: pcmBlob }));
             };
             source.connect(scriptProcessor);
-            scriptProcessor.connect(inputAudioContext.destination);
+            scriptProcessor.connect(inCtx.destination);
           },
-          onmessage: async (message) => {
-            if (message.serverContent?.inputTranscription) {
-              setTranscription(message.serverContent.inputTranscription.text);
+          onmessage: async (msg) => {
+            if (msg.serverContent?.inputTranscription) setTranscription(msg.serverContent.inputTranscription.text);
+            if (msg.serverContent?.interrupted) {
+              for (const s of sourcesRef.current) try { s.stop(); } catch(e) {}
+              sourcesRef.current.clear();
+              nextStartTimeRef.current = 0;
             }
-            if (message.toolCall) {
-              for (const fc of message.toolCall.functionCalls) {
-                if (fc.name === 'addTask') {
-                  onAddTask({ id: Math.random().toString(36).substr(2, 9), title: fc.args.title, time: fc.args.time, priority: fc.args.priority || 'medium', completed: false });
-                } else if (fc.name === 'deleteTask') {
-                  onDeleteTask(fc.args.taskId);
-                }
-                sessionPromise.then(session => session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "ok" } } }));
+            if (msg.toolCall) {
+              for (const fc of msg.toolCall.functionCalls) {
+                if (fc.name === 'addTask') onAddTask({ id: Math.random().toString(36).substr(2, 9), title: fc.args.title, time: fc.args.time, priority: fc.args.priority || 'medium', completed: false });
+                if (fc.name === 'playBriefing') onPlayBriefing();
+                sessionPromise.then(s => s.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "ok" } } }));
               }
             }
-            const audioData = message.serverContent?.modelTurn?.parts?.find(p => p.inlineData)?.inlineData?.data;
-            if (audioData) {
-              const audioBuffer = await decodeAudioData(decodeBase64(audioData), outputAudioContext, 24000, 1);
-              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputAudioContext.currentTime);
-              const source = outputAudioContext.createBufferSource();
-              source.buffer = audioBuffer;
-              source.connect(outputAudioContext.destination);
+            const audio = msg.serverContent?.modelTurn?.parts?.find(p => p.inlineData)?.inlineData?.data;
+            if (audio && outCtx) {
+              const buf = await decodeAudioData(decodeBase64(audio), outCtx, 24000, 1);
+              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outCtx.currentTime);
+              const source = outCtx.createBufferSource();
+              source.buffer = buf;
+              source.connect(outCtx.destination);
+              source.onended = () => sourcesRef.current.delete(source);
+              sourcesRef.current.add(source);
               source.start(nextStartTimeRef.current);
-              nextStartTimeRef.current += audioBuffer.duration;
+              nextStartTimeRef.current += buf.duration;
             }
           },
-          onerror: () => stopSession(),
+          onerror: (e) => { console.error(e); stopSession(); },
           onclose: () => stopSession()
         },
         config: {
-          responseModalalities: [Modality.AUDIO],
-          tools: [{ functionDeclarations: [addTaskTool, deleteTaskTool] }],
+          responseModalities: [Modality.AUDIO],
+          tools: [{ functionDeclarations: tools }],
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: selectedVoice } } },
-          systemInstruction: `Du bist NoteHub, ein intelligenter Sprach-Assistent. Aktuelle Zeit: ${dateStr}, ${timeStr}. Deine Aufgabenliste:\n${taskListSummary}\nAntworte kurz und präzise.`,
+          systemInstruction: `Du bist NoteHub Voice. Antworte extrem kurz. Nutze addTask sofort, wenn der Nutzer eine Aufgabe diktiert.`,
           inputAudioTranscription: {},
         },
       });
@@ -167,27 +158,19 @@ const VoiceAssistant: React.FC<VoiceAssistantProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center gap-6 w-full">
+    <div className="flex flex-col items-center gap-4 w-full">
       {isActive && (
-        <div className="w-full animate-in fade-in slide-in-from-bottom-4 duration-500">
-          <div className="bg-indigo-50/50 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-800/50 rounded-[2rem] p-6 mb-4 shadow-inner">
-            <div className="flex items-center gap-3 mb-3">
-               <div className="p-2 bg-indigo-500 rounded-xl text-white"><MessageSquare className="w-4 h-4" /></div>
-               <span className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">NoteHub Live</span>
-            </div>
-            <p className="text-sm text-slate-600 dark:text-slate-300 font-medium">{transcription || 'Ich höre zu...'}</p>
-          </div>
+        <div className="w-full p-4 bg-indigo-50/50 dark:bg-indigo-900/20 rounded-2xl mb-4 border border-indigo-100 dark:border-indigo-800">
+          <p className="text-xs font-bold text-indigo-400 uppercase mb-2">NoteHub Live</p>
+          <p className="text-sm dark:text-slate-200">{transcription || 'Höre zu...'}</p>
         </div>
       )}
-      <div className="flex flex-col items-center gap-4">
-        <button onClick={isActive ? stopSession : startSession} disabled={isConnecting} className={`relative w-20 h-20 rounded-full flex items-center justify-center transition-all ${isActive ? 'bg-red-500 text-white' : 'bg-slate-800 dark:bg-indigo-600 text-white hover:scale-105 shadow-xl'}`}>
-          {isConnecting ? <Loader2 className="w-10 h-10 animate-spin" /> : isActive ? <X className="w-10 h-10" /> : <Mic className="w-10 h-10" />}
-          {isActive && <div className="absolute -inset-4 bg-red-500/20 rounded-full animate-ping -z-10" />}
-        </button>
-        <div className="text-center">
-          <h3 className="font-bold text-slate-800 dark:text-slate-200">NoteHub Voice</h3>
-          <p className="text-xs text-slate-400 mt-1">Briefing oder Aufgaben diktieren</p>
-        </div>
+      <button onClick={isActive ? stopSession : startSession} disabled={isConnecting} className={`w-20 h-20 rounded-full flex items-center justify-center transition-all ${isActive ? 'bg-red-500 shadow-red-500/20 animate-pulse' : 'bg-indigo-600 shadow-indigo-600/20'} text-white shadow-xl`}>
+        {isConnecting ? <Loader2 className="w-10 h-10 animate-spin" /> : isActive ? <X className="w-10 h-10" /> : <Mic className="w-10 h-10" />}
+      </button>
+      <div className="text-center">
+        <h3 className="font-bold text-slate-800 dark:text-slate-200">NoteHub Voice</h3>
+        <p className="text-[10px] text-slate-400 uppercase font-black tracking-widest mt-1">Briefing oder Aufgaben diktieren</p>
       </div>
     </div>
   );

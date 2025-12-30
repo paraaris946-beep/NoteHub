@@ -38,7 +38,7 @@ export const startCoachingChat = () => {
     model: 'gemini-3-flash-preview',
     config: {
       systemInstruction: SYSTEM_INSTRUCTION,
-      thinkingConfig: { thinkingBudget: 2000 } // Ermöglicht tieferes 'Nachdenken'
+      thinkingConfig: { thinkingBudget: 2000 }
     },
   });
 };
@@ -47,7 +47,7 @@ export const generateAppLogo = async (): Promise<string> => {
   const ai = getGeminiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
-    contents: "Sophisticated minimalist app logo icon for 'NoteHub'. Abstract geometric symbol merging a stylized letter 'N' with clean, overlapping digital layers. Colors: deep charcoal and vibrant electric blue. Premium vector art style, flat design, clean lines, isolated on white background.",
+    contents: "Sophisticated minimalist app logo icon for 'NoteHub'. Abstract geometric symbol. Colors: charcoal and electric blue.",
     config: { imageConfig: { aspectRatio: "1:1" } }
   });
 
@@ -61,7 +61,7 @@ export const generateFocusImage = async (focus: string): Promise<string> => {
   const ai = getGeminiClient();
   const response = await ai.models.generateContent({
     model: 'gemini-2.5-flash-image',
-    contents: `A very calm, minimalistic photography representing: ${focus}. High-end aesthetic, soft natural lighting.`,
+    contents: `A very calm, minimalistic photography representing: ${focus}. soft lighting.`,
     config: { imageConfig: { aspectRatio: "16:9" } }
   });
 
@@ -71,14 +71,16 @@ export const generateFocusImage = async (focus: string): Promise<string> => {
   return "";
 };
 
-export const generateBriefingAudio = async (plan: DayPlan, voiceName: string = 'Kore'): Promise<string> => {
+export const generateBriefingAudio = async (tasks: Task[], focus?: string, motivation?: string, voiceName: string = 'Kore'): Promise<string> => {
   const ai = getGeminiClient();
-  const openTasks = plan.tasks.filter(t => !t.completed);
+  const openTasks = tasks.filter(t => !t.completed);
+  const focusText = focus ? `Unser Fokus heute liegt auf: ${focus}.` : "Schauen wir uns deine anstehenden Aufgaben an.";
   const taskText = openTasks.length > 0 
-    ? ` Deine wichtigsten offenen Aufgaben sind: ${openTasks.map(t => t.title).join(', ')}.`
-    : " Du hast aktuell keine offenen Aufgaben.";
+    ? ` Deine wichtigsten offenen Punkte sind: ${openTasks.map(t => t.title).join(', ')}.`
+    : " Du hast aktuell alle Aufgaben erledigt.";
+  const motivationText = motivation ? ` Ein kleiner Impuls für dich: ${motivation}.` : " Ich wünsche dir einen ruhigen Tag.";
 
-  const script = `Hallo! Hier ist NoteHub mit deinem Überblick für heute. Unser Fokus liegt auf: ${plan.focus}. ${taskText} Ein kleiner Impuls für dich: ${plan.motivation}. Hab einen wunderbaren Tag!`;
+  const script = `Hallo! Hier ist NoteHub. ${focusText}${taskText}${motivationText}`;
 
   const response = await ai.models.generateContent({
     model: "gemini-2.5-flash-preview-tts",
@@ -92,21 +94,17 @@ export const generateBriefingAudio = async (plan: DayPlan, voiceName: string = '
   });
 
   const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
-  if (!base64Audio) throw new Error("Audio-Dienst Fehler.");
+  if (!base64Audio) throw new Error("Audio-Fehler.");
   return base64Audio;
 };
 
-// Custom implementation for encoding bytes to base64 string
 export function encodeBase64(bytes: Uint8Array) {
   let binary = '';
   const len = bytes.byteLength;
-  for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
+  for (let i = 0; i < len; i++) { binary += String.fromCharCode(bytes[i]); }
   return btoa(binary);
 }
 
-// Custom implementation for decoding base64 string to bytes
 export function decodeBase64(base64: string) {
   const binaryString = atob(base64);
   const len = binaryString.length;
@@ -116,12 +114,17 @@ export function decodeBase64(base64: string) {
 }
 
 export async function decodeAudioData(data: Uint8Array, ctx: AudioContext, sampleRate: number, numChannels: number): Promise<AudioBuffer> {
-  const dataInt16 = new Int16Array(data.buffer);
-  const frameCount = dataInt16.length / numChannels;
+  const frameCount = data.byteLength / (2 * numChannels);
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
-  for (let channel = 0; channel < numChannels; channel++) {
-    const channelData = buffer.getChannelData(channel);
-    for (let i = 0; i < frameCount; i++) { channelData[i] = dataInt16[i * numChannels + channel] / 32768.0; }
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+
+  for (let i = 0; i < frameCount; i++) {
+    for (let channel = 0; channel < numChannels; channel++) {
+      const index = (i * numChannels + channel) * 2;
+      // Int16 PCM is little-endian from Gemini API
+      const sample = view.getInt16(index, true);
+      buffer.getChannelData(channel)[i] = sample / 32768.0;
+    }
   }
   return buffer;
 }
