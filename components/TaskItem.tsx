@@ -18,7 +18,8 @@ import {
   HelpCircle,
   MoreHorizontal,
   RefreshCw,
-  Zap
+  Zap,
+  ChevronRight
 } from 'lucide-react';
 
 interface TaskItemProps {
@@ -33,20 +34,50 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
   const [isConfirming, setIsConfirming] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [showPriorityMenu, setShowPriorityMenu] = useState(false);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const priorityMenuRef = useRef<HTMLDivElement>(null);
 
   const priorityConfig = {
-    high: { symbol: '!', color: 'text-red-500 bg-red-50 dark:bg-red-900/30 border-red-100 dark:border-red-800/50', next: 'medium' as const },
-    medium: { symbol: '?', color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/30 border-amber-100 dark:border-amber-800/50', next: 'low' as const },
-    low: { symbol: '.', color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800/50', next: 'high' as const }
+    high: { 
+      id: 'high' as const,
+      label: 'Hoch',
+      symbol: '!', 
+      color: 'text-red-500 bg-red-50 dark:bg-red-900/30 border-red-100 dark:border-red-800/50' 
+    },
+    medium: { 
+      id: 'medium' as const,
+      label: 'Mittel',
+      symbol: '?', 
+      color: 'text-amber-500 bg-amber-50 dark:bg-amber-900/30 border-amber-100 dark:border-amber-800/50' 
+    },
+    low: { 
+      id: 'low' as const,
+      label: 'Niedrig',
+      symbol: '.', 
+      color: 'text-blue-500 bg-blue-50 dark:bg-blue-900/30 border-blue-100 dark:border-blue-800/50' 
+    }
   };
 
   const currentPriority = priorityConfig[task.priority];
+
+  // Close priority menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (priorityMenuRef.current && !priorityMenuRef.current.contains(event.target as Node)) {
+        setShowPriorityMenu(false);
+      }
+    };
+    if (showPriorityMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showPriorityMenu]);
 
   // Camera Logic
   useEffect(() => {
@@ -92,14 +123,17 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
     }
   };
 
-  const togglePriority = () => {
-    if (onUpdate && !task.completed) onUpdate(task.id, { priority: currentPriority.next });
+  const setPriority = (p: 'low' | 'medium' | 'high') => {
+    if (onUpdate && !task.completed) {
+      onUpdate(task.id, { priority: p });
+      setShowPriorityMenu(false);
+    }
   };
 
   return (
     <>
       <div className={`
-        relative flex flex-col p-5 rounded-[2.5rem] transition-all border-2 overflow-hidden
+        relative flex flex-col p-5 rounded-[2.5rem] transition-all border-2 overflow-visible
         ${task.isImportant && !task.completed 
           ? 'border-amber-200 dark:border-amber-700/50 bg-amber-50 dark:bg-amber-900/10 shadow-lg' 
           : 'border-transparent shadow-sm hover:shadow-md hover:border-slate-100 dark:hover:border-slate-800 bg-white dark:bg-slate-900'
@@ -113,10 +147,37 @@ const TaskItem: React.FC<TaskItemProps> = ({ task, onToggle, onToggleImportant, 
             </button>
             
             <div className="flex flex-col flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <button onClick={togglePriority} disabled={task.completed} className={`w-6 h-6 flex items-center justify-center rounded-lg border text-[10px] font-black transition-all shrink-0 ${currentPriority.color} ${!task.completed ? 'hover:scale-110 active:scale-95 shadow-sm' : 'opacity-30'}`}>
-                  {currentPriority.symbol}
-                </button>
+              <div className="flex items-center gap-2 relative">
+                {/* Prioritäts-Indikator mit Dropdown-Trigger */}
+                <div className="relative" ref={priorityMenuRef}>
+                  <button 
+                    onClick={() => !task.completed && setShowPriorityMenu(!showPriorityMenu)} 
+                    disabled={task.completed} 
+                    className={`w-6 h-6 flex items-center justify-center rounded-lg border text-[10px] font-black transition-all shrink-0 ${currentPriority.color} ${!task.completed ? 'hover:scale-110 active:scale-95 shadow-sm' : 'opacity-30'}`}
+                    title="Priorität ändern"
+                  >
+                    {currentPriority.symbol}
+                  </button>
+
+                  {/* Kleines Auswahlmenü (Dropdown) */}
+                  {showPriorityMenu && (
+                    <div className="absolute top-full left-0 mt-2 z-[50] min-w-[120px] bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl p-2 animate-in fade-in zoom-in-95 duration-200">
+                      {(Object.values(priorityConfig)).map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => setPriority(p.id)}
+                          className={`w-full flex items-center gap-3 p-2 rounded-xl text-[10px] font-bold transition-colors ${task.priority === p.id ? 'bg-slate-100 dark:bg-slate-800' : 'hover:bg-slate-50 dark:hover:bg-slate-800/50'}`}
+                        >
+                          <span className={`w-5 h-5 flex items-center justify-center rounded-md border ${p.color}`}>
+                            {p.symbol}
+                          </span>
+                          <span className="dark:text-slate-200">{p.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 <span className={`font-bold text-sm truncate transition-all ${task.completed ? 'line-through text-slate-400' : 'text-slate-700 dark:text-slate-200'}`}>
                   {task.title}
                 </span>
