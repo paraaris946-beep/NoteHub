@@ -148,14 +148,14 @@ const App: React.FC = () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false; // Fix: Only process final results to prevent duplication
+      recognitionRef.current.continuous = false; // Important: prevent multiple firing
+      recognitionRef.current.interimResults = false; // Only get finalized text
       recognitionRef.current.maxAlternatives = 1;
       recognitionRef.current.lang = 'de-DE';
       
       recognitionRef.current.onstart = () => {
         setIsListening(true);
-        handleStopPlayback(); // Stop any reading when mic starts
+        handleStopPlayback(); 
       };
       
       recognitionRef.current.onend = () => {
@@ -165,7 +165,15 @@ const App: React.FC = () => {
       recognitionRef.current.onresult = (e: any) => {
         const transcript = e.results[0][0].transcript;
         if (transcript) {
-          setUserInput(prev => (prev.trim() ? prev.trim() + ' ' : '') + transcript);
+          // Prevention of double logging
+          setUserInput(prev => {
+            const lastWord = prev.trim().split(' ').pop();
+            const firstWordNew = transcript.trim().split(' ')[0];
+            if (lastWord && lastWord.toLowerCase() === firstWordNew.toLowerCase()) {
+              return prev; 
+            }
+            return (prev.trim() ? prev.trim() + ' ' : '') + transcript;
+          });
         }
       };
 
@@ -299,7 +307,6 @@ const App: React.FC = () => {
   };
 
   const playAudio = async (audioBase64: string, label: string) => {
-    // Stop any active microphone before speaking to prevent feedback loops
     if (isListening) recognitionRef.current?.stop();
     
     handleStopPlayback();
@@ -379,7 +386,6 @@ const App: React.FC = () => {
           const planData = JSON.parse(parts[1].trim());
           setDayPlan(planData);
           setTasks(planData.tasks);
-          // On mobile, switch to plan tab if tasks are updated
           if (window.innerWidth < 768) setActiveTab('plan');
         } catch (err) { console.error("JSON parse failed", err); }
       }
@@ -401,7 +407,6 @@ const App: React.FC = () => {
   return (
     <div className={`h-screen flex flex-col overflow-hidden ${isDarkMode ? 'dark bg-slate-950 text-white' : 'bg-slate-50 text-slate-900'}`}>
       
-      {/* Audio Playback Controls Overlay - DOCKED ABOVE BOTTOM NAV ON MOBILE */}
       {playbackState !== 'idle' && (
         <div className={`fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] w-[90%] max-w-sm animate-in slide-in-from-bottom-4 fade-in duration-500 md:bottom-6`}>
           <div className="bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-indigo-500/30 p-3 rounded-[2rem] shadow-2xl flex items-center gap-4">
@@ -424,7 +429,6 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {/* Persistent Smart Panel (Sidebar / Drawer) */}
       <div className={`
         fixed inset-y-0 right-0 z-[200] w-full max-w-md transition-transform duration-500 ease-out
         ${isPanelOpen !== 'none' ? 'translate-x-0' : 'translate-x-full'}
@@ -502,7 +506,6 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden relative pb-20 md:pb-0">
-        {/* TASK SECTION (PLAN) */}
         <section className={`
           flex-1 flex flex-col overflow-y-auto p-6 gap-6 custom-scrollbar
           ${activeTab === 'plan' ? 'flex' : 'hidden md:flex'}
@@ -556,7 +559,6 @@ const App: React.FC = () => {
           </div>
         </section>
 
-        {/* CHAT SECTION */}
         <section className={`
           flex-1 border-l dark:border-slate-800 bg-white dark:bg-slate-900 flex flex-col h-full relative overflow-hidden
           ${activeTab === 'chat' ? 'flex' : 'hidden md:flex'}
@@ -587,7 +589,6 @@ const App: React.FC = () => {
           </div>
         </section>
 
-        {/* MOBILE BOTTOM NAVIGATION */}
         <nav className="fixed bottom-0 inset-x-0 h-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t dark:border-slate-800 flex items-center justify-around md:hidden z-50 px-6">
           <button 
             onClick={() => setActiveTab('plan')} 
@@ -614,7 +615,6 @@ const App: React.FC = () => {
         </nav>
       </main>
 
-      {/* Persistent Notification Overlay (Only for reminders) */}
       {activeNotification && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-6 animate-in fade-in duration-300">
           <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm" onClick={() => setActiveNotification(null)} />
